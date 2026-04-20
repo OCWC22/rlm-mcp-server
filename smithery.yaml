@@ -1,0 +1,16 @@
+# Smithery server descriptor for rlm-repl-mcp
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      stateDir:
+        type: string
+        description: "Directory where session pickles are stored (default: ~/.cache/rlm-mcp)"
+    additionalProperties: false
+  commandFunction: |-
+    (config) => ({
+      command: "rlm-mcp",
+      args: [],
+      env: config.stateDir ? { RLM_STATE_DIR: config.stateDir } : {}
+    })
