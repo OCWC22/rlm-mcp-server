@@ -9,21 +9,45 @@ State pickles live in $RLM_STATE_DIR (default: ~/.cache/rlm-mcp/).
 """
 from __future__ import annotations
 
+import asyncio
+import io
+import json
 import os
 import pickle
 import re
 import time
+import traceback
+import uuid
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp import types
+from mcp.server.fastmcp import Context, FastMCP
 
 STATE_DIR = Path(os.environ.get("RLM_STATE_DIR", Path.home() / ".cache" / "rlm-mcp"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_PEEK_CHARS = 50_000
+MAX_EXEC_OUTPUT_CHARS = 8_000
+
+_SESSION_RUNTIME: dict[str, dict[str, Any]] = {}
 
 mcp = FastMCP("rlm")
+
+
+def _trace(tool: str, input_data: Any, output_data: Any) -> None:
+    """Phase 2 seam for JSONL trace collection."""
+    _ = (tool, input_data, output_data)
+
+
+class RLMCallbackRequired(RuntimeError):
+    """Raised when callback-mode sub-query results are required."""
+
+    def __init__(self, request_id: str, prompt: str):
+        self.request_id = request_id
+        self.prompt = prompt
+        super().__init__(f"callback required: {request_id}")
 
 
 def _safe_id(session_id: str) -> str:
@@ -35,6 +59,19 @@ def _state_path(session_id: str) -> Path:
     return STATE_DIR / f"{_safe_id(session_id)}.pkl"
 
 
+def _default_state() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "context": {
+            "path": "<memory>",
+            "loaded_at": time.time(),
+            "content": "",
+        },
+        "buffers": [],
+        "globals": {},
+    }
+
+
 def _load(session_id: str) -> dict[str, Any]:
     p = _state_path(session_id)
     if not p.exists():
@@ -43,12 +80,90 @@ def _load(session_id: str) -> dict[str, Any]:
         return pickle.load(f)
 
 
+def _load_for_exec(session_id: str) -> dict[str, Any]:
+    p = _state_path(session_id)
+    if not p.exists():
+        return _default_state()
+    with p.open("rb") as f:
+        state = pickle.load(f)
+    if not isinstance(state, dict):
+        return _default_state()
+    return state
+
+
 def _save(session_id: str, state: dict[str, Any]) -> None:
     p = _state_path(session_id)
     tmp = p.with_suffix(".pkl.tmp")
     with tmp.open("wb") as f:
         pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
     tmp.replace(p)
+
+
+def _normalize_exec_state(state: dict[str, Any]) -> dict[str, Any]:
+    context = state.get("context")
+    if not isinstance(context, dict):
+        context = _default_state()["context"]
+    if "path" not in context:
+        context["path"] = "<memory>"
+    if "loaded_at" not in context:
+        context["loaded_at"] = time.time()
+    if "content" not in context:
+        context["content"] = ""
+    context["content"] = str(context.get("content", ""))
+
+    buffers = state.get("buffers")
+    if not isinstance(buffers, list):
+        buffers = []
+
+    persisted = state.get("globals")
+    if not isinstance(persisted, dict):
+        persisted = {}
+
+    state["context"] = context
+    state["buffers"] = buffers
+    state["globals"] = persisted
+    state.setdefault("version", 1)
+    return state
+
+
+def _truncate(s: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
+    if len(s) <= max_chars:
+        return s
+    return s[:max_chars] + f"\n... [truncated to {max_chars} chars] ...\n"
+
+
+def _is_pickleable(value: Any) -> bool:
+    try:
+        pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+        return True
+    except Exception:
+        return False
+
+
+def _filter_pickleable(d: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    kept: dict[str, Any] = {}
+    dropped: list[str] = []
+    for k, v in d.items():
+        if _is_pickleable(v):
+            kept[k] = v
+        else:
+            dropped.append(k)
+    return kept, dropped
+
+
+def _runtime(session_id: str) -> dict[str, Any]:
+    sid = _safe_id(session_id)
+    if sid not in _SESSION_RUNTIME:
+        _SESSION_RUNTIME[sid] = {
+            "use_callback": False,
+            "pending_requests": {},
+            "prompt_results": {},
+            "results_by_request_id": {},
+            "last_sampling_error": None,
+        }
+    return _SESSION_RUNTIME[sid]
 
 
 def _compute_spans(n: int, size: int, overlap: int) -> list[list[int]]:
@@ -66,52 +181,241 @@ def _compute_spans(n: int, size: int, overlap: int) -> list[list[int]]:
     return spans
 
 
+def _make_helpers(context_ref: dict[str, Any], buffers_ref: list[str]) -> dict[str, Any]:
+    def peek(start: int = 0, end: int = 2000) -> str:
+        content = str(context_ref.get("content", ""))
+        a = max(0, start)
+        b = min(len(content), end)
+        if b - a > MAX_PEEK_CHARS:
+            b = a + MAX_PEEK_CHARS
+        out = content[a:b]
+        if b < end:
+            out += f"\n... [peek truncated at {MAX_PEEK_CHARS} chars] ..."
+        return out
+
+    def grep(
+        pattern: str,
+        max_matches: int = 20,
+        window: int = 120,
+        case_insensitive: bool = False,
+    ) -> list[dict[str, Any]]:
+        content = str(context_ref.get("content", ""))
+        flags = re.IGNORECASE if case_insensitive else 0
+        out: list[dict[str, Any]] = []
+        for m in re.finditer(pattern, content, flags):
+            start, end = m.span()
+            out.append(
+                {
+                    "match": m.group(0),
+                    "span": [start, end],
+                    "snippet": content[max(0, start - window):min(len(content), end + window)],
+                }
+            )
+            if len(out) >= max_matches:
+                break
+        return out
+
+    def chunk_indices(size: int = 200_000, overlap: int = 0) -> list[list[int]]:
+        content = str(context_ref.get("content", ""))
+        return _compute_spans(len(content), size, overlap)
+
+    def write_chunks(
+        out_dir: str,
+        size: int = 200_000,
+        overlap: int = 0,
+        prefix: str = "chunk",
+    ) -> list[str]:
+        content = str(context_ref.get("content", ""))
+        spans = _compute_spans(len(content), size, overlap)
+        out = Path(out_dir).expanduser()
+        out.mkdir(parents=True, exist_ok=True)
+        paths: list[str] = []
+        for i, (a, b) in enumerate(spans):
+            f = out / f"{prefix}_{i:04d}.txt"
+            f.write_text(content[a:b], encoding="utf-8")
+            paths.append(str(f))
+        return paths
+
+    def add_buffer(text: str) -> int:
+        buffers_ref.append(str(text))
+        return len(buffers_ref)
+
+    return {
+        "peek": peek,
+        "grep": grep,
+        "chunk_indices": chunk_indices,
+        "write_chunks": write_chunks,
+        "add_buffer": add_buffer,
+    }
+
+
+def _consume_callback_result(session_id: str, prompt: str) -> str | None:
+    runtime = _runtime(session_id)
+    prompt_results = runtime.setdefault("prompt_results", {})
+    queue = prompt_results.get(prompt)
+    if not queue:
+        return None
+    result = queue.pop(0)
+    if not queue:
+        prompt_results.pop(prompt, None)
+    return result
+
+
+def _queue_callback_request(session_id: str, prompt: str, max_tokens: int) -> dict[str, Any]:
+    runtime = _runtime(session_id)
+    request_id = str(uuid.uuid4())
+    runtime.setdefault("pending_requests", {})[request_id] = {
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "created_at": time.time(),
+    }
+    return {"need_subquery": True, "prompt": prompt, "request_id": request_id}
+
+
+def _store_callback_result(session_id: str, request_id: str, result: str) -> dict[str, Any]:
+    runtime = _runtime(session_id)
+    runtime.setdefault("results_by_request_id", {})[request_id] = result
+
+    pending = runtime.setdefault("pending_requests", {}).pop(request_id, None)
+    if isinstance(pending, dict) and "prompt" in pending:
+        prompt = str(pending["prompt"])
+        runtime.setdefault("prompt_results", {}).setdefault(prompt, []).append(result)
+        return {
+            "stored": True,
+            "request_id": request_id,
+            "matched": True,
+            "prompt": prompt,
+        }
+
+    return {
+        "stored": True,
+        "request_id": request_id,
+        "matched": False,
+        "message": "request_id was not pending; result stored by request_id only",
+    }
+
+
+async def _sampling_sub_query(prompt: str, max_tokens: int, ctx: Context | None) -> str:
+    if ctx is None:
+        raise RuntimeError("MCP Context unavailable for sampling")
+
+    message = types.SamplingMessage(
+        role="user",
+        content=types.TextContent(type="text", text=prompt),
+    )
+    result = await ctx.session.create_message(
+        messages=[message],
+        max_tokens=max_tokens,
+    )
+
+    content = result.content
+    if isinstance(content, types.TextContent):
+        return content.text
+
+    if hasattr(content, "text"):
+        return str(getattr(content, "text"))
+
+    if hasattr(content, "model_dump"):
+        return json.dumps(content.model_dump(), ensure_ascii=False)
+
+    return str(content)
+
+
+async def _sub_query_impl(
+    prompt: str,
+    max_tokens: int,
+    session_id: str,
+    ctx: Context | None,
+) -> str | dict[str, Any]:
+    sid = _safe_id(session_id)
+    runtime = _runtime(sid)
+
+    cached = _consume_callback_result(sid, prompt)
+    if cached is not None:
+        return cached
+
+    if runtime.get("use_callback"):
+        return _queue_callback_request(sid, prompt, max_tokens)
+
+    try:
+        return await _sampling_sub_query(prompt=prompt, max_tokens=max_tokens, ctx=ctx)
+    except (AttributeError, NotImplementedError) as exc:
+        runtime["use_callback"] = True
+        runtime["last_sampling_error"] = f"{type(exc).__name__}: {exc}"
+    except Exception as exc:
+        runtime["use_callback"] = True
+        runtime["last_sampling_error"] = f"{type(exc).__name__}: {exc}"
+
+    return _queue_callback_request(sid, prompt, max_tokens)
+
+
 @mcp.tool()
 def rlm_init(path: str, session_id: str = "default", max_bytes: int | None = None) -> dict:
     """Load a text file into a named session. Overwrites if the session exists."""
+    tool_input = {"path": path, "session_id": session_id, "max_bytes": max_bytes}
+
     p = Path(path).expanduser()
     if not p.exists():
-        return {"error": f"File not found: {p}"}
+        out = {"error": f"File not found: {p}"}
+        _trace("rlm_init", tool_input, out)
+        return out
+
     with p.open("rb") as f:
         data = f.read() if max_bytes is None else f.read(max_bytes)
+
     try:
         content = data.decode("utf-8")
     except UnicodeDecodeError:
         content = data.decode("utf-8", errors="replace")
+
     state = {
         "version": 1,
         "context": {"path": str(p), "loaded_at": time.time(), "content": content},
         "buffers": [],
+        "globals": {},
     }
     _save(session_id, state)
-    return {
+
+    out = {
         "session_id": _safe_id(session_id),
         "path": str(p),
         "chars": len(content),
         "state_file": str(_state_path(session_id)),
     }
+    _trace("rlm_init", tool_input, out)
+    return out
 
 
 @mcp.tool()
 def rlm_status(session_id: str = "default") -> dict:
     """Return current session stats."""
+    tool_input = {"session_id": session_id}
+
     try:
         s = _load(session_id)
     except FileNotFoundError as e:
-        return {"error": str(e)}
+        out = {"error": str(e)}
+        _trace("rlm_status", tool_input, out)
+        return out
+
     ctx = s["context"]
-    return {
+    out = {
         "session_id": _safe_id(session_id),
         "path": ctx["path"],
         "chars": len(ctx["content"]),
         "loaded_at": ctx["loaded_at"],
         "buffers": len(s["buffers"]),
+        "globals": len(s.get("globals", {})),
     }
+    _trace("rlm_status", tool_input, out)
+    return out
 
 
 @mcp.tool()
 def rlm_peek(start: int = 0, end: int = 2000, session_id: str = "default") -> str:
     """Return content[start:end] from the session context. Capped at 50k chars."""
+    tool_input = {"start": start, "end": end, "session_id": session_id}
+
     s = _load(session_id)
     content = s["context"]["content"]
     a = max(0, start)
@@ -121,6 +425,8 @@ def rlm_peek(start: int = 0, end: int = 2000, session_id: str = "default") -> st
     out = content[a:b]
     if b < end:
         out += f"\n... [peek truncated at {MAX_PEEK_CHARS} chars] ..."
+
+    _trace("rlm_peek", tool_input, out)
     return out
 
 
@@ -133,27 +439,49 @@ def rlm_grep(
     session_id: str = "default",
 ) -> list[dict]:
     """Regex search over the session context. Returns [{match, span, snippet}, ...]."""
+    tool_input = {
+        "pattern": pattern,
+        "max_matches": max_matches,
+        "window": window,
+        "case_insensitive": case_insensitive,
+        "session_id": session_id,
+    }
+
     s = _load(session_id)
     content = s["context"]["content"]
     flags = re.IGNORECASE if case_insensitive else 0
     out: list[dict] = []
+
     for m in re.finditer(pattern, content, flags):
         start, end = m.span()
-        out.append({
-            "match": m.group(0),
-            "span": [start, end],
-            "snippet": content[max(0, start - window):min(len(content), end + window)],
-        })
+        out.append(
+            {
+                "match": m.group(0),
+                "span": [start, end],
+                "snippet": content[max(0, start - window):min(len(content), end + window)],
+            }
+        )
         if len(out) >= max_matches:
             break
+
+    _trace("rlm_grep", tool_input, out)
     return out
 
 
 @mcp.tool()
-def rlm_chunk_indices(size: int = 200_000, overlap: int = 0, session_id: str = "default") -> list[list[int]]:
+def rlm_chunk_indices(
+    size: int = 200_000,
+    overlap: int = 0,
+    session_id: str = "default",
+) -> list[list[int]]:
     """Return [start, end] spans that tile the context. Default 200k chars, no overlap."""
+    tool_input = {"size": size, "overlap": overlap, "session_id": session_id}
+
     s = _load(session_id)
-    return _compute_spans(len(s["context"]["content"]), size, overlap)
+    out = _compute_spans(len(s["context"]["content"]), size, overlap)
+
+    _trace("rlm_chunk_indices", tool_input, out)
+    return out
 
 
 @mcp.tool()
@@ -165,71 +493,284 @@ def rlm_write_chunks(
     session_id: str = "default",
 ) -> list[str]:
     """Materialise chunks as UTF-8 text files under out_dir. Returns written paths."""
+    tool_input = {
+        "out_dir": out_dir,
+        "size": size,
+        "overlap": overlap,
+        "prefix": prefix,
+        "session_id": session_id,
+    }
+
     s = _load(session_id)
     content = s["context"]["content"]
     spans = _compute_spans(len(content), size, overlap)
-    out = Path(out_dir).expanduser()
-    out.mkdir(parents=True, exist_ok=True)
+    out_dir_path = Path(out_dir).expanduser()
+    out_dir_path.mkdir(parents=True, exist_ok=True)
+
     paths: list[str] = []
     for i, (a, b) in enumerate(spans):
-        f = out / f"{prefix}_{i:04d}.txt"
+        f = out_dir_path / f"{prefix}_{i:04d}.txt"
         f.write_text(content[a:b], encoding="utf-8")
         paths.append(str(f))
+
+    _trace("rlm_write_chunks", tool_input, paths)
     return paths
 
 
 @mcp.tool()
 def rlm_add_buffer(text: str, session_id: str = "default") -> int:
     """Append an intermediate note. Returns new buffer count."""
+    tool_input = {"text": text, "session_id": session_id}
+
     s = _load(session_id)
     s["buffers"].append(str(text))
     _save(session_id, s)
-    return len(s["buffers"])
+
+    out = len(s["buffers"])
+    _trace("rlm_add_buffer", tool_input, out)
+    return out
 
 
 @mcp.tool()
 def rlm_get_buffers(session_id: str = "default") -> list[str]:
     """Return all buffers for the session (append order)."""
+    tool_input = {"session_id": session_id}
+
     s = _load(session_id)
-    return list(s["buffers"])
+    out = list(s["buffers"])
+
+    _trace("rlm_get_buffers", tool_input, out)
+    return out
 
 
 @mcp.tool()
 def rlm_clear_buffers(session_id: str = "default") -> int:
     """Clear all buffers. Returns number cleared."""
+    tool_input = {"session_id": session_id}
+
     s = _load(session_id)
     n = len(s["buffers"])
     s["buffers"] = []
     _save(session_id, s)
+
+    _trace("rlm_clear_buffers", tool_input, n)
     return n
+
+
+def _sub_query_sync(
+    prompt: str,
+    max_tokens: int,
+    session_id: str,
+    ctx: Context | None,
+) -> str | dict[str, Any]:
+    sid = _safe_id(session_id)
+    runtime = _runtime(sid)
+
+    cached = _consume_callback_result(sid, prompt)
+    if cached is not None:
+        return cached
+
+    if runtime.get("use_callback"):
+        return _queue_callback_request(sid, prompt, max_tokens)
+
+    try:
+        asyncio.get_running_loop()
+        runtime["use_callback"] = True
+        if not runtime.get("last_sampling_error"):
+            runtime["last_sampling_error"] = (
+                "RuntimeError: sync rlm_exec cannot await sampling inside active event loop; "
+                "switched to callback mode"
+            )
+        return _queue_callback_request(sid, prompt, max_tokens)
+    except RuntimeError:
+        return asyncio.run(
+            _sub_query_impl(
+                prompt=prompt,
+                max_tokens=max_tokens,
+                session_id=sid,
+                ctx=ctx,
+            )
+        )
+
+
+@mcp.tool()
+def rlm_exec(code: str, session_id: str = "default", ctx: Context | None = None) -> dict:
+    """Run stateful Python exec() with persisted globals for the session."""
+    tool_input = {"code": code, "session_id": session_id}
+
+    sid = _safe_id(session_id)
+    state = _normalize_exec_state(_load_for_exec(sid))
+    context_ref = state["context"]
+    buffers_ref = state["buffers"]
+    persisted_globals = state["globals"]
+
+    def llm_query(prompt: str, max_tokens: int = 2000) -> str:
+        sub_result = _sub_query_sync(
+            prompt=prompt,
+            max_tokens=max_tokens,
+            session_id=sid,
+            ctx=ctx,
+        )
+        if isinstance(sub_result, dict) and sub_result.get("need_subquery"):
+            raise RLMCallbackRequired(
+                request_id=str(sub_result["request_id"]),
+                prompt=str(sub_result["prompt"]),
+            )
+        return str(sub_result)
+
+    env: dict[str, Any] = dict(persisted_globals)
+    env["context"] = context_ref
+    env["content"] = context_ref.get("content", "")
+    env["buffers"] = buffers_ref
+
+    helpers = _make_helpers(context_ref, buffers_ref)
+    env.update(helpers)
+    env["llm_query"] = llm_query
+
+    stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()
+    callback_required: dict[str, str] | None = None
+
+    with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+        try:
+            exec(code, env, env)
+        except RLMCallbackRequired as exc:
+            callback_required = {
+                "request_id": exc.request_id,
+                "prompt": exc.prompt,
+            }
+        except Exception:
+            traceback.print_exc(file=stderr_buf)
+
+    maybe_ctx = env.get("context")
+    if isinstance(maybe_ctx, dict) and "content" in maybe_ctx:
+        state["context"] = maybe_ctx
+
+    maybe_buffers = env.get("buffers")
+    if isinstance(maybe_buffers, list):
+        state["buffers"] = maybe_buffers
+
+    injected_keys = {
+        "__builtins__",
+        "context",
+        "content",
+        "buffers",
+        "llm_query",
+        *helpers.keys(),
+    }
+    to_persist = {k: v for k, v in env.items() if k not in injected_keys}
+    filtered, dropped = _filter_pickleable(to_persist)
+    state["globals"] = filtered
+
+    _save(sid, state)
+
+    stderr = stderr_buf.getvalue()
+    if dropped:
+        dropped_msg = "Dropped unpickleable variables: " + ", ".join(dropped)
+        if stderr:
+            stderr = f"{stderr.rstrip()}\n{dropped_msg}\n"
+        else:
+            stderr = f"{dropped_msg}\n"
+
+    out: dict[str, Any] = {
+        "stdout": _truncate(stdout_buf.getvalue(), MAX_EXEC_OUTPUT_CHARS),
+        "stderr": _truncate(stderr, MAX_EXEC_OUTPUT_CHARS),
+    }
+    if callback_required is not None:
+        out["callback_required"] = callback_required
+
+    _trace("rlm_exec", tool_input, out)
+    return out
+
+
+@mcp.tool()
+async def rlm_sub_query(
+    prompt: str,
+    max_tokens: int = 2000,
+    session_id: str = "default",
+    ctx: Context | None = None,
+) -> str | dict:
+    """Run a recursive sub-query via MCP sampling, with callback fallback."""
+    tool_input = {
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "session_id": session_id,
+    }
+
+    out = await _sub_query_impl(
+        prompt=prompt,
+        max_tokens=max_tokens,
+        session_id=session_id,
+        ctx=ctx,
+    )
+
+    _trace("rlm_sub_query", tool_input, out)
+    return out
+
+
+@mcp.tool()
+def rlm_sub_query_result(
+    request_id: str,
+    result: str,
+    session_id: str = "default",
+) -> dict:
+    """Store callback-mode sub-query result for later retrieval."""
+    tool_input = {
+        "request_id": request_id,
+        "result": result,
+        "session_id": session_id,
+    }
+
+    out = _store_callback_result(
+        session_id=session_id,
+        request_id=request_id,
+        result=result,
+    )
+
+    _trace("rlm_sub_query_result", tool_input, out)
+    return out
 
 
 @mcp.tool()
 def rlm_reset(session_id: str = "default") -> dict:
     """Delete a session state file."""
+    tool_input = {"session_id": session_id}
+
     p = _state_path(session_id)
     if p.exists():
         p.unlink()
-        return {"deleted": str(p)}
-    return {"deleted": None, "message": f"no state for {session_id!r}"}
+        out = {"deleted": str(p)}
+        _trace("rlm_reset", tool_input, out)
+        return out
+
+    out = {"deleted": None, "message": f"no state for {session_id!r}"}
+    _trace("rlm_reset", tool_input, out)
+    return out
 
 
 @mcp.tool()
 def rlm_list_sessions() -> list[dict]:
     """List all active sessions."""
+    tool_input: dict[str, Any] = {}
+
     out: list[dict] = []
     for f in sorted(STATE_DIR.glob("*.pkl")):
         try:
             with f.open("rb") as fp:
                 s = pickle.load(fp)
-            out.append({
-                "session_id": f.stem,
-                "path": s["context"]["path"],
-                "chars": len(s["context"]["content"]),
-                "buffers": len(s["buffers"]),
-            })
+            out.append(
+                {
+                    "session_id": f.stem,
+                    "path": s["context"]["path"],
+                    "chars": len(s["context"]["content"]),
+                    "buffers": len(s["buffers"]),
+                    "globals": len(s.get("globals", {})),
+                }
+            )
         except Exception as e:
             out.append({"session_id": f.stem, "error": str(e)})
+
+    _trace("rlm_list_sessions", tool_input, out)
     return out
 
 
