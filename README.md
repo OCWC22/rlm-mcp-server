@@ -157,7 +157,7 @@ MIT. See [LICENSE](LICENSE).
 
 The RLM paper (arXiv:2512.24601, §2) defines **three invariants** distinguishing
 a true RLM from a superficially similar strawman (Algorithm 2). This server
-meets **2.5/3** and makes deliberate trade-offs on the third. Honest breakdown
+now meets **3/3** core invariants, with explicit non-goals called out below. Honest breakdown
 below — graded from the paper author's point of view.
 
 ### ✅ Implemented faithfully
@@ -183,24 +183,18 @@ Injected in the exec environment:
 `rlm_peek` caps output at 50k chars; `rlm_status` returns constant-size metadata.
 Trace log truncates any field >2000 chars. Matches `hist ← [Metadata(state)]`.
 
-### ⚠️ Implemented partially
+### ✅ Implemented faithfully (continued)
 
 **Invariant #3 — symbolic recursion via `llm_query`** (§2).
-Paper requires `llm_query(...)` callable *inside* exec'd code in arbitrary
-loops, launching Ω(|P|) sub-calls programmatically. We implement this with
-client-dependent paths:
+`rlm_exec` is async and executes user code in a worker thread while bridging
+sync `llm_query(...)` calls back to MCP Sampling on the main event loop via
+`asyncio.run_coroutine_threadsafe(...)`. This preserves paper-style in-code
+recursion loops (`for chunk in chunks: llm_query(...)`) without forcing
+callback fallback purely because of sync/async mismatch.
 
-- **MCP Sampling path (Claude Desktop, Claude Code):** host model is called
-  via the MCP Sampling API. `for chunk in chunks: summaries.append(llm_query(...))`
-  runs as expected — matches paper §3.2 single-process pattern.
-- **Callback path (Codex CLI, Gemini CLI):** those clients don't yet support
-  MCP Sampling from sync tool context. `llm_query` raises a structured
-  `{need_subquery: True, request_id: ...}`; the host runs the sub-call,
-  posts back via `rlm_sub_query_result`, exec resumes on re-entry. The
-  interface is preserved but each sub-call costs a round-trip.
-
-Paper-faithful in spirit (code-driven recursion from the REPL), MCP-pragmatic
-in implementation for clients without Sampling.
+When Sampling is unavailable in the connected client/session, recursion still
+works through callback mode (`need_subquery` + `rlm_sub_query_result`) with
+explicit host round-trips.
 
 ### ❌ Not implemented (explicit negative space)
 
@@ -210,8 +204,8 @@ in implementation for clients without Sampling.
 - **Constant-size history compaction** (§2 footnote 1). Paper trims each turn
   to *c* tokens for ≤ K/c root iterations. We leave root-history management
   to the host — Claude/Codex/Gemini each do their own.
-- **Async sub-calls** (§4 obs. 4, Appendix B). Paper flags async as the main
-  latency fix. We're sync throughout.
+- **Parallel async sub-calls** (§4 obs. 4, Appendix B). Paper flags async
+  fan-out as the main latency fix. We still execute sub-calls one-at-a-time.
 - **Batched `llm_query`** (§C.1b Qwen3-Coder prompt). Paper warns against
   excessive sub-calls; `richardwhiteii/rlm` ships `rlm_sub_query_batch`; we
   don't — single-call only for now.
@@ -230,9 +224,9 @@ in implementation for clients without Sampling.
 |---|---|---|---|---|
 | #1 symbolic handle | ✅ | ✅ | ✅ | ✅ |
 | #2 persistent REPL | ✅ | ⚠️ subprocess-per-call | ✅ (Daytona) | ✅ |
-| #3 symbolic recursion | ⚠️ sampling OR callback | ✅ | ✅ | ✅ |
+| #3 symbolic recursion | ✅ sampling bridge + callback fallback | ✅ | ✅ | ✅ |
 | Free/local | ✅ no key | ⚠️ Ollama optional | ❌ Daytona | ❌ API keys |
-| Paper-native eval | ❌ unbenchmarked | ❌ | partial | ✅ |
+| Paper-native eval | ⚠️ harness scaffold (S-NIAH + OOLONG loader) | ❌ | partial | ✅ |
 
 Paper §B "negative results we tried" sanity check:
 - "Models without sufficient coding capabilities struggle as RLMs" — host-model

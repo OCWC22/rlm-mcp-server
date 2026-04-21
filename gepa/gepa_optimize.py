@@ -7,9 +7,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .metrics import score
+from .metrics import eval_harness_metric, score
 from .signatures import RLMToolSelection, make_student_module
 from .trace_to_dataset import load_trainset
+
+METRICS = {
+    "heuristic": score,
+    "eval": eval_harness_metric,
+}
 
 
 def _import_dspy_gepa():
@@ -17,7 +22,7 @@ def _import_dspy_gepa():
         import dspy
     except Exception as exc:
         raise RuntimeError(
-            "DSPy is not installed. Install optional deps: pip install 'rlm-repl-mcp[gepa]'"
+            "DSPy is not installed. Install optional deps: pip install 'rlm-mcp-server[gepa]'"
         ) from exc
 
     GEPA = getattr(dspy, "GEPA", None)
@@ -43,10 +48,22 @@ def _build_optimizer(GEPA: Any, metric_fn: Any, num_threads: int, max_calls: int
     return GEPA(**kwargs)
 
 
-def run(trainset_path: str | Path, out_path: str | Path, lm_name: str, num_threads: int, max_calls: int) -> int:
+def run(
+    trainset_path: str | Path,
+    out_path: str | Path,
+    lm_name: str,
+    num_threads: int,
+    max_calls: int,
+    metric_name: str = "heuristic",
+) -> int:
     trainset = load_trainset(trainset_path)
     if not trainset:
         print("No training examples produced from trace file.", file=sys.stderr)
+        return 2
+
+    metric_fn = METRICS.get(metric_name)
+    if metric_fn is None:
+        print(f"Unknown metric {metric_name!r}; choose one of: {', '.join(sorted(METRICS))}", file=sys.stderr)
         return 2
 
     try:
@@ -63,7 +80,7 @@ def run(trainset_path: str | Path, out_path: str | Path, lm_name: str, num_threa
         print(str(exc), file=sys.stderr)
         return 2
 
-    optimizer = _build_optimizer(GEPA, score, num_threads=num_threads, max_calls=max_calls)
+    optimizer = _build_optimizer(GEPA, metric_fn, num_threads=num_threads, max_calls=max_calls)
     compiled = optimizer.compile(student=student, trainset=trainset)
 
     out = Path(out_path).expanduser()
@@ -86,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lm", default="openai/gpt-4o-mini", help="DSPy LM identifier")
     p.add_argument("--num-threads", type=int, default=4)
     p.add_argument("--max-calls", type=int, default=50)
+    p.add_argument("--metric", choices=sorted(METRICS), default="heuristic", help="Metric mode")
     return p
 
 
@@ -98,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         lm_name=args.lm,
         num_threads=args.num_threads,
         max_calls=args.max_calls,
+        metric_name=args.metric,
     )
 
 

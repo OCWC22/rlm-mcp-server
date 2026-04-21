@@ -32,7 +32,7 @@
 - Invariant #2 persistent REPL → `rlm_exec` with pickled globals
 - Invariant #3 programmatic recursion → `rlm_sub_query` + in-exec `llm_query`
 - Known gaps:
-  - `rlm_exec` is sync; in active async-loop contexts it uses callback fallback behavior for `llm_query`
+  - in-exec `llm_query` now uses a sync→async sampling bridge when sampling is available; callback fallback remains for unsupported clients
   - No scheduler/planner layer yet (tools expose primitives; orchestration is host-model driven)
 
 ## How to add a tool
@@ -107,7 +107,9 @@ PY
 - Intended user-driven loop:
   1. Run real sessions against this MCP server.
   2. Export traces via `rlm-trace export /path/to/traces.jsonl`.
-  3. Run `python -m gepa.gepa_optimize --trainset /path/to/traces.jsonl`.
+  3. Run `python -m gepa.gepa_optimize --trainset /path/to/traces.jsonl --metric heuristic`
+     for free trace-shape scoring, or `--metric eval` for benchmark-style
+     examples that include `query/context/gold` and execute `eval.harness`.
   4. Review compiled output and manually copy improved tool descriptions back into
      `rlm_mcp.py` `@mcp.tool(description=...)` arguments.
 - This loop is **not automatic**; optimization runs are user-initiated and may incur LM cost.
