@@ -25,6 +25,7 @@ Issues   = "https://github.com/OCWC22/rlm-repl-mcp/issues"
 
 [project.scripts]
 rlm-mcp = "rlm_mcp:main"
+rlm-trace = "rlm_trace_cli:main"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["rlm_mcp.py"]
+only-include = ["rlm_mcp.py", "rlm_trace_cli.py"]
