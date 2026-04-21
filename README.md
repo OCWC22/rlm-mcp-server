@@ -36,24 +36,11 @@ peek / grep / chunk / annotate them without re-paying context tokens per turn.
 | `rlm_reset(session_id?)` | Delete a session |
 | `rlm_list_sessions()` | List all active sessions |
 
-State pickles live at `$RLM_STATE_DIR` (default `~/.cache/rlm-mcp/`).
+State pickles live at `$RLM_STATE_DIR` (fallback `$RLM_DATA_DIR`, default `~/.cache/rlm-mcp/`).
 
-## New in v0.2.0 (Phase 1)
+## What's new
 
-- `rlm_exec` now provides a persistent Python execution environment keyed by
-  `session_id` and saves pickleable globals between calls.
-- `rlm_exec` injects `context`, `content`, `buffers`, and helpers:
-  `peek`, `grep`, `chunk_indices`, `write_chunks`, `add_buffer`.
-- `rlm_exec` also injects `llm_query(prompt, max_tokens=2000)` so recursive
-  sub-queries can be triggered directly from executed Python code.
-- `rlm_sub_query` attempts MCP Sampling first (`ctx.session.create_message`). If
-  sampling is unavailable in the connected client/session, it falls back to a
-  callback loop and returns:
-  `{"need_subquery": true, "prompt": "...", "request_id": "..."}`.
-- In fallback mode, call `rlm_sub_query_result(request_id, result)` and then
-  re-run the original call (or re-run `rlm_exec` block) to consume the result.
-- `_trace(tool, input, output)` is currently a no-op seam for Phase 2 JSONL
-  trace collection.
+See [CHANGELOG.md](./CHANGELOG.md) for release-by-release notes.
 
 ### Client compatibility note
 
@@ -69,7 +56,7 @@ local sessions.
 
 ## Install
 
-### Option 1 — Smithery (recommended, once published)
+### Option 1 — Smithery (recommended)
 
 ```bash
 smithery install rlm-mcp-server
@@ -127,9 +114,27 @@ command = "rlm-mcp"
 
 ### Claude Code
 
-Either the MCP (as above) OR the bundled skill + subagent at
-[OCWC22/claude_code_RLM](https://github.com/Brainqub3/claude_code_RLM) — the
-skill integrates a Haiku subagent for chunk-level extraction.
+Use MCP registration for persistent multi-turn workflows. The bundled skill at
+[OCWC22/claude_code_RLM](https://github.com/OCWC22/claude_code_RLM) remains a
+useful fallback for one-shot sessions. See [Coexistence with the Claude Code skill](#coexistence-with-the-claude-code-skill).
+
+## Coexistence with the Claude Code skill
+
+The installed Claude Code skill at `~/.claude/skills/rlm/` is a **parallel**
+integration path that shells out through `scripts/rlm_repl.py` and the
+`rlm-subcall` subagent.
+
+- MCP server path: `~/.claude/mcp-servers/rlm/` (14 tools + 3 prompts,
+  client-agnostic, state persists across turns and clients).
+- Skill path: `~/.claude/skills/rlm/` (Claude Code one-shot orchestration,
+  separate pickle state).
+- State is **not shared** between these paths because they write to different
+  storage locations.
+
+Prefer MCP for multi-turn analysis and cross-client portability. Prefer the
+skill when MCP is unavailable and you need a one-shot Claude Code run.
+
+Skill repo: https://github.com/OCWC22/claude_code_RLM
 
 ## Install all detected clients (fresh machine)
 
@@ -144,6 +149,36 @@ python3 scripts/verify_clients.py
   (Claude Desktop, Claude Code, Codex CLI, Gemini CLI) to use this checkout's
   `run_server.sh`.
 - `verify_clients.py` runs MCP stdio handshake checks and expects 14 tools.
+- `verify_end_to_end.py` runs per-client end-to-end checks (config, cache writeability,
+  optional live CLI invocation, and trace assertions for `rlm_init` + `rlm_grep` + `rlm_exec`).
+
+## Running end-to-end in each CLI
+
+Known-good command shapes from investigation runs:
+
+- Claude Code
+  ```bash
+  claude -p --permission-mode bypassPermissions "<prompt>"
+  ```
+  Uses user-scope MCP registration in `~/.claude.json`; no local `.mcp.json` required.
+
+- Codex CLI
+  ```bash
+  codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox "<prompt>"
+  ```
+  Requires Codex subscription/auth.
+
+- Gemini CLI (Node >= 20 required)
+  ```bash
+  PATH="/opt/homebrew/opt/node@20/bin:$PATH" gemini -p --approval-mode yolo --allowed-mcp-server-names rlm "<prompt>"
+  ```
+  Ensure `node --version` reports `v20` or newer before running.
+
+- Claude Desktop (manual check)
+  1. Open Claude Desktop → **Configure**
+  2. Open **Servers**
+  3. Verify server name `rlm` shows **Connected**
+  4. Run a prompt that triggers `rlm_init` and confirm trace output appears in `~/.cache/rlm-mcp/traces`.
 
 ## Example usage (natural language, any client)
 
