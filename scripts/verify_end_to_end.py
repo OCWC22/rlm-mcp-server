@@ -169,7 +169,9 @@ def _build_command(spec: ClientSpec, prompt: str) -> list[str]:
     if spec.key == "codex":
         return ["codex", "exec", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", prompt]
     if spec.key == "gemini":
-        return ["gemini", "-p", "--approval-mode", "yolo", "--allowed-mcp-server-names", "rlm", prompt]
+        # Gemini requires the prompt value immediately after -p, not at the end.
+        return ["gemini", "-p", prompt, "--approval-mode", "yolo",
+                "--allowed-mcp-server-names", "rlm", "-o", "text"]
     raise RuntimeError(f"Unsupported client: {spec.key}")
 
 

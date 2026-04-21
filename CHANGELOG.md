@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2] - 2026-04-21
+
+### Fixed
+- `scripts/verify_end_to_end.py` now positions the Gemini prompt value
+  immediately after `-p` (was being appended at the end, which caused the
+  Gemini CLI to print help text and exit 1). Adds `-o text` for clean
+  output formatting.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
