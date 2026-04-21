@@ -97,6 +97,14 @@ PY
 - Don’t add paid/external LLM dependencies (`mcp>=1.2` only; sampling + callback are sufficient)
 - Don’t share pickle state files between users (RCE risk)
 
-## Coming soon
+## GEPA optimization loop (Phase 3)
 
-Phase 3 will use collected traces to run GEPA (DSPy prompt optimization) against tool descriptions. `rlm-trace export` is the intended handoff interface.
+- Phase 2 trace collection is live (`rlm-trace export`).
+- Phase 3 GEPA scaffold is live under `gepa/` (see `gepa/README.md`).
+- Intended user-driven loop:
+  1. Run real sessions against this MCP server.
+  2. Export traces via `rlm-trace export /path/to/traces.jsonl`.
+  3. Run `python -m gepa.gepa_optimize --trainset /path/to/traces.jsonl`.
+  4. Review compiled output and manually copy improved tool descriptions back into
+     `rlm_mcp.py` `@mcp.tool(description=...)` arguments.
+- This loop is **not automatic**; optimization runs are user-initiated and may incur LM cost.
