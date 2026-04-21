@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      RLM_TRACE_DISABLE: "1"
+      RLM_STATE_DIR: ${{ runner.temp }}/rlm-state
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Import smoke
+        run: |
+          python -c "import rlm_mcp; import rlm_trace_cli; from eval import harness; from gepa import metrics, signatures, trace_to_dataset; print('OK')"
+
+      - name: MCP stdio handshake (assert 14 tools)
+        run: |
+          python - <<'PY'
+          import anyio
+          import sys
+          from mcp import types
+          from mcp.client.session import ClientSession
+          from mcp.client.stdio import StdioServerParameters, stdio_client
+
+          EXPECTED = 14
+
+          async def main():
+              params = StdioServerParameters(command=sys.executable, args=["rlm_mcp.py"], cwd=".")
+              async with stdio_client(params) as (r, w):
+                  async with ClientSession(r, w) as s:
+                      await s.initialize()
+                      await s.send_notification(types.InitializedNotification())
+                      tools = await s.list_tools()
+                      count = len(tools.tools)
+                      print(f"tool_count={count}")
+                      if count != EXPECTED:
+                          raise SystemExit(f"expected {EXPECTED} tools, got {count}")
+
+          anyio.run(main)
+          PY
+
+      - name: Eval harness sanity (S-NIAH n=5 length=2000, score=1.0)
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          import sys
+
+          cmd = [sys.executable, "-m", "eval.harness", "--dataset=sniah", "--n=5", "--length=2000"]
+          result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+          print(result.stdout)
+          report = json.loads(result.stdout)
+          score = float(report.get("score", -1))
+          if score != 1.0:
+              raise SystemExit(f"expected score 1.0, got {score}")
+          PY
