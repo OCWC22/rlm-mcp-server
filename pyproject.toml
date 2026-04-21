@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rlm-mcp-server"
-version = "0.4.0-pre"
+version = "0.4.1"
 description = "Simple RLM-style persistent text REPL exposed over MCP. Load huge files, peek/grep/chunk them from any MCP client (Claude Desktop, Codex CLI, Gemini CLI, etc.)."
 readme = "README.md"
 license = { text = "MIT" }

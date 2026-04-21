@@ -64,6 +64,16 @@ Execution mode behavior remains:
 - Claude Desktop / Claude Code: sampling path typically available (`ctx.session.create_message`)
 - Codex CLI / Gemini CLI: may require callback mode (`need_subquery` + `rlm_sub_query_result`)
 
+## Coexistence with the Claude Code skill
+
+- `~/.claude/skills/rlm/` is a parallel Claude Code-only path that shells out
+  through `rlm_repl.py` and the `rlm-subcall` subagent.
+- MCP server state from `~/.claude/mcp-servers/rlm/` is **not shared** with
+  the skill path (different pickle/state locations).
+- Prefer MCP for multi-turn, client-agnostic workflows. Prefer the skill for
+  one-shot Claude Code sessions when MCP is unavailable.
+- Skill source: https://github.com/OCWC22/claude_code_RLM
+
 ## Running locally
 
 ```bash
@@ -137,3 +147,12 @@ PYCODE
   4. Review compiled output and manually copy improved tool descriptions back into
      `rlm_mcp.py` `@mcp.tool(description=...)` arguments.
 - This loop is **not automatic**; optimization runs are user-initiated and may incur LM cost.
+
+
+<claude-mem-context>
+# Memory Context
+
+# [rlm] recent context, 2026-04-21 2:16am PDT
+
+No previous sessions found.
+</claude-mem-context>

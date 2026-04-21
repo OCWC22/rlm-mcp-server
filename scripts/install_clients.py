@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -258,6 +259,36 @@ def _build_client_specs() -> list[ClientSpec]:
     ]
 
 
+def _node_major_version() -> tuple[int | None, str]:
+    node_path = shutil.which("node")
+    if node_path is None:
+        return None, "node-not-found"
+
+    proc = subprocess.run(
+        [node_path, "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    raw = (proc.stdout or proc.stderr or "").strip()
+    match = re.search(r"v?(\d+)", raw)
+    if not match:
+        return None, raw or "unknown"
+    return int(match.group(1)), raw
+
+
+def _gemini_node_warning() -> str | None:
+    if shutil.which("gemini") is None:
+        return None
+
+    major, raw = _node_major_version()
+    if major is None:
+        return f"[warn] Gemini CLI detected but unable to verify Node.js version ({raw}); Gemini requires Node >=20."
+    if major < 20:
+        return f"[warn] Gemini CLI detected but Node.js {raw} < v20; upgrade to Node >=20 for reliable MCP runs."
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Show changes without writing.")
@@ -280,6 +311,7 @@ def main() -> int:
     pending_writes: dict[str, str] = {}
     detected_paths: list[Path] = []
     had_error = False
+    node_warning = _gemini_node_warning()
 
     for spec in _build_client_specs():
         detected = spec.config_path.exists()
@@ -359,6 +391,7 @@ def main() -> int:
         "force": args.force,
         "backup_dir": str(backup_dir) if backup_dir else None,
         "clients": [asdict(report) for report in reports],
+        "warnings": [node_warning] if node_warning else [],
     }
 
     if args.json_report:
@@ -370,6 +403,9 @@ def main() -> int:
             print("Mode: dry-run (no files written)")
         elif backup_dir:
             print(f"Backup dir: {backup_dir}")
+
+        if node_warning:
+            print(node_warning)
 
         for report in reports:
             status = "detected" if report.detected else "not detected"
