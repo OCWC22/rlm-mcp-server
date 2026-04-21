@@ -1,6 +1,9 @@
-# AGENTS.md — rlm-repl-mcp
+# AGENTS.md — rlm-mcp-server
 
-`rlm-repl-mcp` is a local, free MCP server implementing core Recursive Language Model (RLM) mechanics from arXiv:2512.24601: symbolic handles for large context, persistent REPL state, and programmatic recursion. It is intentionally small (stdlib + `mcp>=1.2`), trust-boundary local (no sandboxing, no API keys), and designed to run across Claude Desktop/Code, Codex CLI, and Gemini CLI.
+> **Paper:** *Recursive Language Models* — Zhang, Kraska, Khattab (MIT CSAIL)
+> https://arxiv.org/abs/2512.24601
+> **Reference impl:** https://github.com/alexzhang13/rlm
+> **This repo:** https://github.com/OCWC22/rlm-mcp-server
 
 ## Architecture at a glance
 

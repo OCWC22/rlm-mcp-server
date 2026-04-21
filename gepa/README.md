@@ -1,3 +1,5 @@
+> For the RLM paper see [arXiv:2512.24601](https://arxiv.org/abs/2512.24601).
+
 # GEPA scaffold for `rlm-repl-mcp`
 
 This directory is a **scaffold** for optimizing RLM tool-description prompts from real trace data. It is **not** a pre-trained optimizer output and it does **not** auto-run optimization. A real GEPA run requires an LM backend and will consume tokens/compute.
