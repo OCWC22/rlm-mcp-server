@@ -5,7 +5,7 @@ Free, local, no API keys. Exposes a stateful text buffer (one per named
 session) to any MCP client so the host model can load huge files, peek,
 grep, chunk, and materialise chunks for sub-agent analysis.
 
-State pickles live in $RLM_STATE_DIR (default: ~/.cache/rlm-mcp/).
+State pickles live in $RLM_STATE_DIR (fallback: $RLM_DATA_DIR, default: ~/.cache/rlm-mcp/).
 """
 from __future__ import annotations
 
@@ -30,12 +30,43 @@ from typing import Any
 from mcp import types
 from mcp.server.fastmcp import Context, FastMCP
 
-STATE_DIR = Path(os.environ.get("RLM_STATE_DIR", Path.home() / ".cache" / "rlm-mcp"))
-STATE_DIR.mkdir(parents=True, exist_ok=True)
+def _resolve_env_path(name: str) -> Path | None:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value:
+        return None
+    return Path(value).expanduser()
 
-_TRACE_DIR_ENV = os.environ.get("RLM_TRACE_DIR")
-TRACE_DIR = Path(_TRACE_DIR_ENV).expanduser() if _TRACE_DIR_ENV else (STATE_DIR / "traces")
+
+_state_from_primary = _resolve_env_path("RLM_STATE_DIR")
+_state_from_alias = _resolve_env_path("RLM_DATA_DIR")
+if _state_from_primary is not None:
+    STATE_DIR = _state_from_primary
+    _STATE_DIR_SOURCE = "RLM_STATE_DIR"
+elif _state_from_alias is not None:
+    STATE_DIR = _state_from_alias
+    _STATE_DIR_SOURCE = "RLM_DATA_DIR"
+else:
+    STATE_DIR = Path.home() / ".cache" / "rlm-mcp"
+    _STATE_DIR_SOURCE = "default"
+
+_trace_from_primary = _resolve_env_path("RLM_TRACE_DIR")
+if _trace_from_primary is not None:
+    TRACE_DIR = _trace_from_primary
+    _TRACE_DIR_SOURCE = "RLM_TRACE_DIR"
+else:
+    TRACE_DIR = STATE_DIR / "traces"
+    _TRACE_DIR_SOURCE = "default"
+
 TRACE_DISABLED = os.environ.get("RLM_TRACE_DISABLE") == "1"
+STATE_DIR.mkdir(parents=True, exist_ok=True)
+print(
+    f"[rlm-config] state_dir={STATE_DIR} ({_STATE_DIR_SOURCE}) "
+    f"trace_dir={TRACE_DIR} ({_TRACE_DIR_SOURCE})",
+    file=sys.stderr,
+)
 _TRACE_MAX_STR = 2_000
 _TRACE_HEAD_TAIL = 200
 _SERVER_START_NS = time.perf_counter_ns()
