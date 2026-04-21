@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 2
     env:
       RLM_TRACE_DISABLE: "1"
-      RLM_STATE_DIR: ${{ format('{0}/rlm-state', runner.temp) }}
+      RLM_STATE_DIR: /tmp/rlm-state
     steps:
       - name: Checkout
         uses: actions/checkout@v4
