@@ -11,7 +11,7 @@ import random
 import uuid
 from typing import Any
 
-SUPPORTED_LENGTHS = (4_000, 16_000, 64_000, 256_000)
+SUPPORTED_LENGTHS = (2_000, 4_000, 16_000, 64_000, 256_000)
 
 # ~2k chars of neutral filler text. Kept inline so smoke tests are zero-dependency.
 FILLER_SENTENCES = [
