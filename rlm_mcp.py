@@ -10,14 +10,19 @@ State pickles live in $RLM_STATE_DIR (default: ~/.cache/rlm-mcp/).
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import functools
+import inspect
 import io
 import json
 import os
 import pickle
 import re
+import sys
 import time
 import traceback
 import uuid
+from datetime import datetime, timezone
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
@@ -28,6 +33,25 @@ from mcp.server.fastmcp import Context, FastMCP
 STATE_DIR = Path(os.environ.get("RLM_STATE_DIR", Path.home() / ".cache" / "rlm-mcp"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 
+_TRACE_DIR_ENV = os.environ.get("RLM_TRACE_DIR")
+TRACE_DIR = Path(_TRACE_DIR_ENV).expanduser() if _TRACE_DIR_ENV else (STATE_DIR / "traces")
+TRACE_DISABLED = os.environ.get("RLM_TRACE_DISABLE") == "1"
+_TRACE_MAX_STR = 2_000
+_TRACE_HEAD_TAIL = 200
+_SERVER_START_NS = time.perf_counter_ns()
+_TRACE_WRITE_FAILURE_TYPES: set[str] = set()
+_TRACE_START_NS: contextvars.ContextVar[int | None] = contextvars.ContextVar("rlm_trace_start_ns", default=None)
+_TRACE_SESSION_ID: contextvars.ContextVar[str] = contextvars.ContextVar("rlm_trace_session_id", default="default")
+_TRACE_EMITTED: contextvars.ContextVar[bool] = contextvars.ContextVar("rlm_trace_emitted", default=False)
+
+if not TRACE_DISABLED:
+    try:
+        TRACE_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        print(f"[rlm-trace] enable failed ({type(exc).__name__}): {exc}", file=sys.stderr)
+    else:
+        print(f"[rlm-trace] enabled dir={TRACE_DIR}", file=sys.stderr)
+
 MAX_PEEK_CHARS = 50_000
 MAX_EXEC_OUTPUT_CHARS = 8_000
 
@@ -36,9 +60,162 @@ _SESSION_RUNTIME: dict[str, dict[str, Any]] = {}
 mcp = FastMCP("rlm")
 
 
-def _trace(tool: str, input_data: Any, output_data: Any) -> None:
-    """Phase 2 seam for JSONL trace collection."""
-    _ = (tool, input_data, output_data)
+def _trace_truncate_string(value: str) -> str | dict[str, Any]:
+    if len(value) <= _TRACE_MAX_STR:
+        return value
+    return {
+        "_truncated": True,
+        "len": len(value),
+        "head": value[:_TRACE_HEAD_TAIL],
+        "tail": value[-_TRACE_HEAD_TAIL:],
+    }
+
+
+def _trace_redacted_content(value: Any) -> dict[str, Any]:
+    if isinstance(value, str):
+        return {"_redacted": True, "reason": "content_field", "len": len(value)}
+    return {"_redacted": True, "reason": "content_field"}
+
+
+def _sanitize_trace(value: Any, key: str | None = None) -> Any:
+    if key == "content":
+        return _trace_redacted_content(value)
+
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+
+    if isinstance(value, str):
+        return _trace_truncate_string(value)
+
+    if isinstance(value, bytes):
+        return _trace_truncate_string(value.decode("utf-8", errors="replace"))
+
+    if isinstance(value, Path):
+        return str(value)
+
+    if isinstance(value, dict):
+        return {str(k): _sanitize_trace(v, key=str(k)) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple, set)):
+        return [_sanitize_trace(v) for v in value]
+
+    if hasattr(value, "model_dump"):
+        try:
+            return _sanitize_trace(value.model_dump())
+        except Exception:
+            pass
+
+    return _trace_truncate_string(repr(value))
+
+
+def _bind_trace_input(fn: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+    try:
+        bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        return {k: v for k, v in bound.arguments.items() if k != "ctx"}
+    except Exception:
+        return {"args": list(args), "kwargs": kwargs}
+
+
+def _trace_write_failure_once(exc: Exception) -> None:
+    exc_name = type(exc).__name__
+    if exc_name in _TRACE_WRITE_FAILURE_TYPES:
+        return
+    _TRACE_WRITE_FAILURE_TYPES.add(exc_name)
+    print(f"[rlm-trace] write failed ({exc_name}): {exc}", file=sys.stderr)
+
+
+def _trace(tool: str, input_data: Any, output_data: Any, session_id: str | None = None) -> None:
+    """Append one JSONL trace record per tool call."""
+    _TRACE_EMITTED.set(True)
+
+    if TRACE_DISABLED:
+        return
+
+    sid = _safe_id(session_id or _TRACE_SESSION_ID.get())
+    now_utc = datetime.now(timezone.utc)
+    now_ns = time.perf_counter_ns()
+    started_ns = _TRACE_START_NS.get()
+    duration_ms = 0
+    if started_ns is not None:
+        duration_ms = int(max(0, (now_ns - started_ns) // 1_000_000))
+
+    record = {
+        "ts": now_utc.isoformat().replace("+00:00", "Z"),
+        "ns": int(now_ns - _SERVER_START_NS),
+        "session_id": sid,
+        "tool": tool,
+        "input": _sanitize_trace(input_data),
+        "output": _sanitize_trace(output_data),
+        "duration_ms": duration_ms,
+    }
+
+    trace_path = TRACE_DIR / f"{sid}-{now_utc.strftime('%Y%m%d')}.jsonl"
+    try:
+        TRACE_DIR.mkdir(parents=True, exist_ok=True)
+        with trace_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+    except Exception as exc:
+        _trace_write_failure_once(exc)
+
+
+def _traced(tool_name: str):
+    """Decorator that captures per-call timing/session and traces uncaught errors."""
+
+    def decorator(fn: Any):
+        if inspect.iscoroutinefunction(fn):
+
+            @functools.wraps(fn)
+            async def async_wrapper(*args: Any, **kwargs: Any):
+                bound_input = _bind_trace_input(fn, args, kwargs)
+                sid = _safe_id(str(bound_input.get("session_id", "default")))
+                start_token = _TRACE_START_NS.set(time.perf_counter_ns())
+                sid_token = _TRACE_SESSION_ID.set(sid)
+                emitted_token = _TRACE_EMITTED.set(False)
+                try:
+                    return await fn(*args, **kwargs)
+                except Exception as exc:
+                    if not _TRACE_EMITTED.get():
+                        _trace(
+                            tool_name,
+                            bound_input,
+                            {"error": f"{type(exc).__name__}: {exc}"},
+                            session_id=sid,
+                        )
+                    raise
+                finally:
+                    _TRACE_START_NS.reset(start_token)
+                    _TRACE_SESSION_ID.reset(sid_token)
+                    _TRACE_EMITTED.reset(emitted_token)
+
+            return async_wrapper
+
+        @functools.wraps(fn)
+        def sync_wrapper(*args: Any, **kwargs: Any):
+            bound_input = _bind_trace_input(fn, args, kwargs)
+            sid = _safe_id(str(bound_input.get("session_id", "default")))
+            start_token = _TRACE_START_NS.set(time.perf_counter_ns())
+            sid_token = _TRACE_SESSION_ID.set(sid)
+            emitted_token = _TRACE_EMITTED.set(False)
+            try:
+                return fn(*args, **kwargs)
+            except Exception as exc:
+                if not _TRACE_EMITTED.get():
+                    _trace(
+                        tool_name,
+                        bound_input,
+                        {"error": f"{type(exc).__name__}: {exc}"},
+                        session_id=sid,
+                    )
+                raise
+            finally:
+                _TRACE_START_NS.reset(start_token)
+                _TRACE_SESSION_ID.reset(sid_token)
+                _TRACE_EMITTED.reset(emitted_token)
+
+        return sync_wrapper
+
+    return decorator
 
 
 class RLMCallbackRequired(RuntimeError):
@@ -350,6 +527,7 @@ async def _sub_query_impl(
 
 
 @mcp.tool()
+@_traced("rlm_init")
 def rlm_init(path: str, session_id: str = "default", max_bytes: int | None = None) -> dict:
     """Load a text file into a named session. Overwrites if the session exists."""
     tool_input = {"path": path, "session_id": session_id, "max_bytes": max_bytes}
@@ -387,6 +565,7 @@ def rlm_init(path: str, session_id: str = "default", max_bytes: int | None = Non
 
 
 @mcp.tool()
+@_traced("rlm_status")
 def rlm_status(session_id: str = "default") -> dict:
     """Return current session stats."""
     tool_input = {"session_id": session_id}
@@ -412,6 +591,7 @@ def rlm_status(session_id: str = "default") -> dict:
 
 
 @mcp.tool()
+@_traced("rlm_peek")
 def rlm_peek(start: int = 0, end: int = 2000, session_id: str = "default") -> str:
     """Return content[start:end] from the session context. Capped at 50k chars."""
     tool_input = {"start": start, "end": end, "session_id": session_id}
@@ -431,6 +611,7 @@ def rlm_peek(start: int = 0, end: int = 2000, session_id: str = "default") -> st
 
 
 @mcp.tool()
+@_traced("rlm_grep")
 def rlm_grep(
     pattern: str,
     max_matches: int = 20,
@@ -469,6 +650,7 @@ def rlm_grep(
 
 
 @mcp.tool()
+@_traced("rlm_chunk_indices")
 def rlm_chunk_indices(
     size: int = 200_000,
     overlap: int = 0,
@@ -485,6 +667,7 @@ def rlm_chunk_indices(
 
 
 @mcp.tool()
+@_traced("rlm_write_chunks")
 def rlm_write_chunks(
     out_dir: str,
     size: int = 200_000,
@@ -518,6 +701,7 @@ def rlm_write_chunks(
 
 
 @mcp.tool()
+@_traced("rlm_add_buffer")
 def rlm_add_buffer(text: str, session_id: str = "default") -> int:
     """Append an intermediate note. Returns new buffer count."""
     tool_input = {"text": text, "session_id": session_id}
@@ -532,6 +716,7 @@ def rlm_add_buffer(text: str, session_id: str = "default") -> int:
 
 
 @mcp.tool()
+@_traced("rlm_get_buffers")
 def rlm_get_buffers(session_id: str = "default") -> list[str]:
     """Return all buffers for the session (append order)."""
     tool_input = {"session_id": session_id}
@@ -544,6 +729,7 @@ def rlm_get_buffers(session_id: str = "default") -> list[str]:
 
 
 @mcp.tool()
+@_traced("rlm_clear_buffers")
 def rlm_clear_buffers(session_id: str = "default") -> int:
     """Clear all buffers. Returns number cleared."""
     tool_input = {"session_id": session_id}
@@ -594,6 +780,7 @@ def _sub_query_sync(
 
 
 @mcp.tool()
+@_traced("rlm_exec")
 def rlm_exec(code: str, session_id: str = "default", ctx: Context | None = None) -> dict:
     """Run stateful Python exec() with persisted globals for the session."""
     tool_input = {"code": code, "session_id": session_id}
@@ -684,6 +871,7 @@ def rlm_exec(code: str, session_id: str = "default", ctx: Context | None = None)
 
 
 @mcp.tool()
+@_traced("rlm_sub_query")
 async def rlm_sub_query(
     prompt: str,
     max_tokens: int = 2000,
@@ -709,6 +897,7 @@ async def rlm_sub_query(
 
 
 @mcp.tool()
+@_traced("rlm_sub_query_result")
 def rlm_sub_query_result(
     request_id: str,
     result: str,
@@ -732,6 +921,7 @@ def rlm_sub_query_result(
 
 
 @mcp.tool()
+@_traced("rlm_reset")
 def rlm_reset(session_id: str = "default") -> dict:
     """Delete a session state file."""
     tool_input = {"session_id": session_id}
@@ -749,6 +939,7 @@ def rlm_reset(session_id: str = "default") -> dict:
 
 
 @mcp.tool()
+@_traced("rlm_list_sessions")
 def rlm_list_sessions() -> list[dict]:
     """List all active sessions."""
     tool_input: dict[str, Any] = {}
