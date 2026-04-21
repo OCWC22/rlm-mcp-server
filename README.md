@@ -250,6 +250,16 @@ Paper §B "negative results we tried" sanity check:
 - "Distinguishing final answer from a thought is brittle" — we sidestep this
   by not having a `FINAL()` mechanism at all; the host handles termination.
 
+## Use cases
+
+Explore concrete end-to-end walkthroughs under [`examples/`](./examples/):
+
+- [`examples/kernel-research.md`](./examples/kernel-research.md) — GPU kernel review flow using grep anchors, `rlm_exec` structural loops, and recursive hotspot interpretation.
+- [`examples/paper-analysis.md`](./examples/paper-analysis.md) — long-paper deep dive with section-aware chunking and evidence-first synthesis.
+- [`examples/codebase-triage.md`](./examples/codebase-triage.md) — grep-first architecture triage over a pre-concatenated code corpus.
+
+These are realistic transcripts (with illustrative model outputs) meant to help host LMs pick the right tool sequence quickly.
+
 ### Cite the paper
 
 ```bibtex

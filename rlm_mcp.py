@@ -526,10 +526,117 @@ async def _sub_query_impl(
     return _queue_callback_request(sid, prompt, max_tokens)
 
 
+@mcp.prompt(
+    description=(
+        "Prime a GPU-kernel analysis workflow over rlm tools with grep anchors, "
+        "stateful exec loops, and recursive hotspot reviews."
+    )
+)
+def kernel_analysis(kernel_path: str, question: str) -> list[dict[str, str]]:
+    """Prompt template for AMD HIP / CUDA / Triton kernel inspection workflows."""
+    return [
+        {
+            "role": "assistant",
+            "content": (
+                "Use this tool sequence for kernel review: rlm_init -> rlm_status -> "
+                "rlm_grep for primitives (__global__, dim3, __shared__, atomicAdd, "
+                "wave_size, threadIdx/blockIdx) -> rlm_exec for per-function stats -> "
+                "llm_query/rlm_sub_query for semantic hotspot analysis -> "
+                "rlm_add_buffer + rlm_get_buffers for final synthesis. If callback mode "
+                "is requested, satisfy it with rlm_sub_query_result and resume."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Analyze GPU kernel source at `{kernel_path}` and answer: {question}\n\n"
+                "Start by loading the file into session `kernel_analysis`. Then grep for "
+                "launch signatures, shared-memory usage, synchronization, atomics, and "
+                "warp/wave assumptions. Next run rlm_exec code that enumerates likely "
+                "functions, estimates memory-access and reduction patterns, and records "
+                "intermediate conclusions with rlm_add_buffer. Use recursive sub-queries "
+                "for contentious hotspots (e.g., occupancy bottlenecks or race risks), "
+                "and finish with a prioritized summary grounded in concrete spans."
+            ),
+        },
+    ]
+
+
+@mcp.prompt(
+    description=(
+        "Prime a paper-reading workflow that chunks sections, runs focused recursive "
+        "sub-analyses, and synthesizes topic-specific conclusions."
+    )
+)
+def paper_deep_dive(paper_path: str, topic: str) -> list[dict[str, str]]:
+    """Prompt template for long-form academic text analysis."""
+    return [
+        {
+            "role": "assistant",
+            "content": (
+                "Use this sequence: rlm_init -> rlm_status -> rlm_grep on topic terms -> "
+                "rlm_exec to split by section headers and track section metadata -> "
+                "rlm_sub_query or llm_query per section -> rlm_add_buffer and "
+                "rlm_get_buffers for synthesis. Keep findings tied to explicit section "
+                "spans and quote snippets when confidence is low."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Deep-dive `{paper_path}` with focus topic: {topic}.\n\n"
+                "Load into session `paper_deep_dive`, identify structural boundaries "
+                "(abstract, intro, method, results, discussion/appendix), and collect "
+                "topic-relevant evidence in each section. Use recursive sub-queries to "
+                "extract claims, assumptions, metrics, and failure modes section-by-"
+                "section. End with a synthesized answer that distinguishes confirmed "
+                "claims, inferred implications, and open questions."
+            ),
+        },
+    ]
+
+
+@mcp.prompt(
+    description=(
+        "Prime a large-codebase triage workflow using grep discovery, stateful "
+        "navigation logic, and buffered synthesis."
+    )
+)
+def codebase_triage(repo_path: str, question: str) -> list[dict[str, str]]:
+    """Prompt template for pre-concatenated corpus triage and architecture discovery."""
+    return [
+        {
+            "role": "assistant",
+            "content": (
+                "Assume repo_path points to a pre-concatenated corpus file (for example: "
+                "find ... -type f | xargs cat > corpus.txt). Use rlm_init -> rlm_status -> "
+                "rlm_grep to locate candidate modules and symbols -> rlm_exec to build a "
+                "navigation index and shortlist hotspots -> rlm_add_buffer/rlm_get_buffers "
+                "for roll-up. Use rlm_sub_query for focused semantic reads of dense spans."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Triage corpus `{repo_path}` to answer: {question}.\n\n"
+                "Start broad with grep-driven discovery (entrypoints, config, APIs, "
+                "tests), then narrow to the files or symbol clusters most relevant to "
+                "the question. Use rlm_exec to maintain evolving maps of components, "
+                "dependencies, and unresolved hypotheses across turns. Finish with a "
+                "concise findings report plus concrete follow-up probes if certainty is "
+                "below high confidence."
+            ),
+        },
+    ]
+
+
 @mcp.tool()
 @_traced("rlm_init")
 def rlm_init(path: str, session_id: str = "default", max_bytes: int | None = None) -> dict:
-    """Load a text file into a named session. Overwrites if the session exists."""
+    """Call this when you have a local text file and need it loaded into an RLM session for repeated analysis.
+
+Example: args = {"path": "/tmp/corpus.txt", "session_id": "paper", "max_bytes": 2_000_000}. Next step is typically `rlm_status` to confirm load size, followed by `rlm_grep` or `rlm_peek` for targeted reads. NEVER use this for binary assets when byte-perfect fidelity matters.
+"""
     tool_input = {"path": path, "session_id": session_id, "max_bytes": max_bytes}
 
     p = Path(path).expanduser()
@@ -567,7 +674,10 @@ def rlm_init(path: str, session_id: str = "default", max_bytes: int | None = Non
 @mcp.tool()
 @_traced("rlm_status")
 def rlm_status(session_id: str = "default") -> dict:
-    """Return current session stats."""
+    """Call this when you need a quick metadata check before deeper tool calls.
+
+Example: args = {"session_id": "paper"}. Next step is usually `rlm_grep` or `rlm_peek` once you confirm the expected file and character count are loaded. NEVER use this when you need the underlying text itself.
+"""
     tool_input = {"session_id": session_id}
 
     try:
@@ -593,7 +703,10 @@ def rlm_status(session_id: str = "default") -> dict:
 @mcp.tool()
 @_traced("rlm_peek")
 def rlm_peek(start: int = 0, end: int = 2000, session_id: str = "default") -> str:
-    """Return content[start:end] from the session context. Capped at 50k chars."""
+    """Call this when you know a character range and need exact text from the loaded context.
+
+Example: args = {"start": 12_000, "end": 15_000, "session_id": "paper"}. Next step is typically to summarize that slice, run `rlm_grep` for nearby anchors, or store a takeaway with `rlm_add_buffer`. NEVER use this as a full-document export path; it intentionally caps large reads.
+"""
     tool_input = {"start": start, "end": end, "session_id": session_id}
 
     s = _load(session_id)
@@ -619,7 +732,10 @@ def rlm_grep(
     case_insensitive: bool = False,
     session_id: str = "default",
 ) -> list[dict]:
-    """Regex search over the session context. Returns [{match, span, snippet}, ...]."""
+    """Call this when you have a regex or keyword pattern and need fast anchor points into long context.
+
+Example: args = {"pattern": "atomicAdd|__shared__", "max_matches": 30, "window": 200, "session_id": "kernel"}. Next step is usually `rlm_peek` around interesting spans or `rlm_add_buffer` to capture findings for synthesis. NEVER use this as a syntax-aware parser for languages that require an AST.
+"""
     tool_input = {
         "pattern": pattern,
         "max_matches": max_matches,
@@ -656,7 +772,10 @@ def rlm_chunk_indices(
     overlap: int = 0,
     session_id: str = "default",
 ) -> list[list[int]]:
-    """Return [start, end] spans that tile the context. Default 200k chars, no overlap."""
+    """Call this when you need a deterministic chunking plan before iterative analysis.
+
+Example: args = {"size": 120_000, "overlap": 2_000, "session_id": "paper"}. Next step is typically iterating those spans with `rlm_peek` in a loop or materializing files with `rlm_write_chunks`. NEVER use this expecting text output; it returns span metadata only.
+"""
     tool_input = {"size": size, "overlap": overlap, "session_id": session_id}
 
     s = _load(session_id)
@@ -675,7 +794,10 @@ def rlm_write_chunks(
     prefix: str = "chunk",
     session_id: str = "default",
 ) -> list[str]:
-    """Materialise chunks as UTF-8 text files under out_dir. Returns written paths."""
+    """Call this when downstream tooling or sub-agents need chunk files on disk rather than in-memory spans.
+
+Example: args = {"out_dir": "/tmp/paper_chunks", "size": 100_000, "overlap": 1_000, "prefix": "sec", "session_id": "paper"}. Next step is typically looping over returned paths with `rlm_sub_query`/`llm_query` and then consolidating conclusions in buffers. NEVER use this for quick interactive inspection where `rlm_peek` is enough.
+"""
     tool_input = {
         "out_dir": out_dir,
         "size": size,
@@ -703,7 +825,10 @@ def rlm_write_chunks(
 @mcp.tool()
 @_traced("rlm_add_buffer")
 def rlm_add_buffer(text: str, session_id: str = "default") -> int:
-    """Append an intermediate note. Returns new buffer count."""
+    """Call this when you want to persist an intermediate insight without mutating the main context.
+
+Example: args = {"text": "Kernel launch bounds imply 256-thread blocks", "session_id": "kernel"}. Next step is typically `rlm_get_buffers` for synthesis or `rlm_clear_buffers` when starting a fresh pass. NEVER use this as a replacement for structured source data.
+"""
     tool_input = {"text": text, "session_id": session_id}
 
     s = _load(session_id)
@@ -718,7 +843,10 @@ def rlm_add_buffer(text: str, session_id: str = "default") -> int:
 @mcp.tool()
 @_traced("rlm_get_buffers")
 def rlm_get_buffers(session_id: str = "default") -> list[str]:
-    """Return all buffers for the session (append order)."""
+    """Call this when you need the full ordered note trail accumulated via `rlm_add_buffer`.
+
+Example: args = {"session_id": "paper"}. Next step is usually writing a synthesis from these notes or pruning stale entries with `rlm_clear_buffers`. NEVER use this expecting raw context slices from the loaded file.
+"""
     tool_input = {"session_id": session_id}
 
     s = _load(session_id)
@@ -731,7 +859,10 @@ def rlm_get_buffers(session_id: str = "default") -> list[str]:
 @mcp.tool()
 @_traced("rlm_clear_buffers")
 def rlm_clear_buffers(session_id: str = "default") -> int:
-    """Clear all buffers. Returns number cleared."""
+    """Call this when you are starting a new analysis phase and want to wipe intermediate notes.
+
+Example: args = {"session_id": "triage"}. Next step is usually another `rlm_add_buffer` cycle with cleaner hypotheses tied to the new objective. NEVER use this to delete session context or persisted globals; use `rlm_reset` for that.
+"""
     tool_input = {"session_id": session_id}
 
     s = _load(session_id)
@@ -771,7 +902,10 @@ def _execute_code(code: str, env: dict[str, Any]) -> dict[str, Any]:
 @mcp.tool()
 @_traced("rlm_exec")
 async def rlm_exec(code: str, session_id: str = "default", ctx: Context | None = None) -> dict:
-    """Run stateful Python exec() with persisted globals for the session."""
+    """Call this when you need programmable control flow over loaded context with persistent variables across invocations.
+
+Example: args = {"session_id": "kernel", "code": "hits = grep('atomicAdd')\nprint(len(hits))"}. Next step is typically to inspect `stdout`/`stderr`, iterate on the code, and optionally recurse with `llm_query` for hotspot interpretation. NEVER use this with untrusted code; execution is intentionally unsandboxed.
+"""
     tool_input = {"code": code, "session_id": session_id}
 
     sid = _safe_id(session_id)
@@ -870,7 +1004,10 @@ async def rlm_sub_query(
     session_id: str = "default",
     ctx: Context | None = None,
 ) -> str | dict:
-    """Run a recursive sub-query via MCP sampling, with callback fallback."""
+    """Call this when you need one focused recursive model call without writing a full `rlm_exec` program.
+
+Example: args = {"prompt": "Summarize risks in function reduce_warp", "max_tokens": 800, "session_id": "kernel"}. Next step is either consuming the returned text directly or, if `need_subquery` is returned, providing the answer through `rlm_sub_query_result` before retrying. NEVER use this for broad multi-step orchestration that belongs in host-level planning.
+"""
     tool_input = {
         "prompt": prompt,
         "max_tokens": max_tokens,
@@ -895,7 +1032,10 @@ def rlm_sub_query_result(
     result: str,
     session_id: str = "default",
 ) -> dict:
-    """Store callback-mode sub-query result for later retrieval."""
+    """Call this when `rlm_sub_query` or `llm_query` returns `need_subquery` and you must feed back a callback answer.
+
+Example: args = {"request_id": "9f...", "result": "Section 3 claims linear memory scaling", "session_id": "paper"}. Next step is typically rerunning the original `rlm_sub_query`/`rlm_exec` call so the queued result is consumed. NEVER use this with guessed request IDs; unmatched results cannot be linked to the intended prompt flow.
+"""
     tool_input = {
         "request_id": request_id,
         "result": result,
@@ -915,7 +1055,10 @@ def rlm_sub_query_result(
 @mcp.tool()
 @_traced("rlm_reset")
 def rlm_reset(session_id: str = "default") -> dict:
-    """Delete a session state file."""
+    """Call this when you need to fully discard one session’s saved context, buffers, and persisted globals.
+
+Example: args = {"session_id": "old_experiment"}. Next step is typically `rlm_list_sessions` to verify cleanup or `rlm_init` to start a fresh session with new source text. NEVER use this when you only want to clear notes; `rlm_clear_buffers` is the safer narrow operation.
+"""
     tool_input = {"session_id": session_id}
 
     p = _state_path(session_id)
@@ -933,7 +1076,10 @@ def rlm_reset(session_id: str = "default") -> dict:
 @mcp.tool()
 @_traced("rlm_list_sessions")
 def rlm_list_sessions() -> list[dict]:
-    """List all active sessions."""
+    """Call this when you need to discover which session IDs currently exist before selecting one for analysis.
+
+Example: args = {}. Next step is usually `rlm_status` on a chosen session, then `rlm_grep`/`rlm_peek` to continue work in the right context. NEVER use this as a permissions boundary; it is an inventory helper only.
+"""
     tool_input: dict[str, Any] = {}
 
     out: list[dict] = []
