@@ -45,13 +45,19 @@
 
 ## Client compatibility
 
-Canonical namespace layout after Item A consolidation:
+Canonical namespace layout:
 
-- `rlm` (primary) → `/Users/chen/.claude/mcp-servers/rlm/run_server.sh`
+- `rlm` (only entry) → `/Users/chen/.claude/mcp-servers/rlm/run_server.sh`
   - configured in **Claude Desktop**, **Claude Code**, **Codex CLI**, and **Gemini CLI**
-- `rlm-richardwhiteii` (alternate) → `/Users/chen/.claude/mcp-servers/richardwhiteii-rlm/run_server.sh`
-  - kept in Claude Desktop/Codex CLI/Gemini CLI as an optional fallback
-- `rlm-simple` has been removed from client configs
+- `rlm-richardwhiteii` is intentionally deregistered from client configs
+  (the local repo can remain on disk as a dormant fallback checkout)
+
+Maintainer scripts for self-healing parity:
+
+- `python3 scripts/install_clients.py` — idempotently rewires detected clients
+  to this checkout and refreshes timestamped config backups before writes.
+- `python3 scripts/verify_clients.py` — runs stdio handshake smoke checks per
+  detected client (expect 14 tools, including `rlm_exec` and `rlm_sub_query`).
 
 Execution mode behavior remains:
 
