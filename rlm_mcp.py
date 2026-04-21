@@ -743,77 +743,7 @@ def rlm_clear_buffers(session_id: str = "default") -> int:
     return n
 
 
-def _sub_query_sync(
-    prompt: str,
-    max_tokens: int,
-    session_id: str,
-    ctx: Context | None,
-) -> str | dict[str, Any]:
-    sid = _safe_id(session_id)
-    runtime = _runtime(sid)
-
-    cached = _consume_callback_result(sid, prompt)
-    if cached is not None:
-        return cached
-
-    if runtime.get("use_callback"):
-        return _queue_callback_request(sid, prompt, max_tokens)
-
-    try:
-        asyncio.get_running_loop()
-        runtime["use_callback"] = True
-        if not runtime.get("last_sampling_error"):
-            runtime["last_sampling_error"] = (
-                "RuntimeError: sync rlm_exec cannot await sampling inside active event loop; "
-                "switched to callback mode"
-            )
-        return _queue_callback_request(sid, prompt, max_tokens)
-    except RuntimeError:
-        return asyncio.run(
-            _sub_query_impl(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                session_id=sid,
-                ctx=ctx,
-            )
-        )
-
-
-@mcp.tool()
-@_traced("rlm_exec")
-def rlm_exec(code: str, session_id: str = "default", ctx: Context | None = None) -> dict:
-    """Run stateful Python exec() with persisted globals for the session."""
-    tool_input = {"code": code, "session_id": session_id}
-
-    sid = _safe_id(session_id)
-    state = _normalize_exec_state(_load_for_exec(sid))
-    context_ref = state["context"]
-    buffers_ref = state["buffers"]
-    persisted_globals = state["globals"]
-
-    def llm_query(prompt: str, max_tokens: int = 2000) -> str:
-        sub_result = _sub_query_sync(
-            prompt=prompt,
-            max_tokens=max_tokens,
-            session_id=sid,
-            ctx=ctx,
-        )
-        if isinstance(sub_result, dict) and sub_result.get("need_subquery"):
-            raise RLMCallbackRequired(
-                request_id=str(sub_result["request_id"]),
-                prompt=str(sub_result["prompt"]),
-            )
-        return str(sub_result)
-
-    env: dict[str, Any] = dict(persisted_globals)
-    env["context"] = context_ref
-    env["content"] = context_ref.get("content", "")
-    env["buffers"] = buffers_ref
-
-    helpers = _make_helpers(context_ref, buffers_ref)
-    env.update(helpers)
-    env["llm_query"] = llm_query
-
+def _execute_code(code: str, env: dict[str, Any]) -> dict[str, Any]:
     stdout_buf = io.StringIO()
     stderr_buf = io.StringIO()
     callback_required: dict[str, str] | None = None
@@ -828,6 +758,68 @@ def rlm_exec(code: str, session_id: str = "default", ctx: Context | None = None)
             }
         except Exception:
             traceback.print_exc(file=stderr_buf)
+
+    out: dict[str, Any] = {
+        "stdout": _truncate(stdout_buf.getvalue(), MAX_EXEC_OUTPUT_CHARS),
+        "stderr": _truncate(stderr_buf.getvalue(), MAX_EXEC_OUTPUT_CHARS),
+    }
+    if callback_required is not None:
+        out["callback_required"] = callback_required
+    return out
+
+
+@mcp.tool()
+@_traced("rlm_exec")
+async def rlm_exec(code: str, session_id: str = "default", ctx: Context | None = None) -> dict:
+    """Run stateful Python exec() with persisted globals for the session."""
+    tool_input = {"code": code, "session_id": session_id}
+
+    sid = _safe_id(session_id)
+    runtime = _runtime(sid)
+    main_loop = asyncio.get_running_loop()
+
+    state = _normalize_exec_state(_load_for_exec(sid))
+    context_ref = state["context"]
+    buffers_ref = state["buffers"]
+    persisted_globals = state["globals"]
+
+    def llm_query(prompt: str, max_tokens: int = 2000) -> str:
+        cached = _consume_callback_result(sid, prompt)
+        if cached is not None:
+            return cached
+
+        if ctx is None or runtime.get("use_callback"):
+            queued = _queue_callback_request(sid, prompt, max_tokens)
+            raise RLMCallbackRequired(
+                request_id=str(queued["request_id"]),
+                prompt=str(queued["prompt"]),
+            )
+
+        async def _do() -> str:
+            return await _sampling_sub_query(prompt=prompt, max_tokens=max_tokens, ctx=ctx)
+
+        try:
+            fut = asyncio.run_coroutine_threadsafe(_do(), main_loop)
+            return str(fut.result(timeout=300))
+        except Exception as exc:
+            runtime["use_callback"] = True
+            runtime["last_sampling_error"] = f"{type(exc).__name__}: {exc}"
+            queued = _queue_callback_request(sid, prompt, max_tokens)
+            raise RLMCallbackRequired(
+                request_id=str(queued["request_id"]),
+                prompt=str(queued["prompt"]),
+            )
+
+    env: dict[str, Any] = dict(persisted_globals)
+    env["context"] = context_ref
+    env["content"] = context_ref.get("content", "")
+    env["buffers"] = buffers_ref
+
+    helpers = _make_helpers(context_ref, buffers_ref)
+    env.update(helpers)
+    env["llm_query"] = llm_query
+
+    exec_out = await main_loop.run_in_executor(None, _execute_code, code, env)
 
     maybe_ctx = env.get("context")
     if isinstance(maybe_ctx, dict) and "content" in maybe_ctx:
@@ -851,7 +843,7 @@ def rlm_exec(code: str, session_id: str = "default", ctx: Context | None = None)
 
     _save(sid, state)
 
-    stderr = stderr_buf.getvalue()
+    stderr = str(exec_out.get("stderr", ""))
     if dropped:
         dropped_msg = "Dropped unpickleable variables: " + ", ".join(dropped)
         if stderr:
@@ -860,11 +852,11 @@ def rlm_exec(code: str, session_id: str = "default", ctx: Context | None = None)
             stderr = f"{dropped_msg}\n"
 
     out: dict[str, Any] = {
-        "stdout": _truncate(stdout_buf.getvalue(), MAX_EXEC_OUTPUT_CHARS),
+        "stdout": str(exec_out.get("stdout", "")),
         "stderr": _truncate(stderr, MAX_EXEC_OUTPUT_CHARS),
     }
-    if callback_required is not None:
-        out["callback_required"] = callback_required
+    if "callback_required" in exec_out:
+        out["callback_required"] = exec_out["callback_required"]
 
     _trace("rlm_exec", tool_input, out)
     return out
