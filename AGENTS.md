@@ -45,6 +45,16 @@
 
 ## Client compatibility
 
+Canonical namespace layout after Item A consolidation:
+
+- `rlm` (primary) → `/Users/chen/.claude/mcp-servers/rlm/run_server.sh`
+  - configured in **Claude Desktop**, **Claude Code**, **Codex CLI**, and **Gemini CLI**
+- `rlm-richardwhiteii` (alternate) → `/Users/chen/.claude/mcp-servers/richardwhiteii-rlm/run_server.sh`
+  - kept in Claude Desktop/Codex CLI/Gemini CLI as an optional fallback
+- `rlm-simple` has been removed from client configs
+
+Execution mode behavior remains:
+
 - Claude Desktop / Claude Code: sampling path typically available (`ctx.session.create_message`)
 - Codex CLI / Gemini CLI: may require callback mode (`need_subquery` + `rlm_sub_query_result`)
 
@@ -52,14 +62,22 @@
 
 ```bash
 cd ~/.claude/mcp-servers/rlm
+
+# Canonical branch state after consolidation:
+# - main is the single source of truth
+# - feat/full-rlm-v0.2 and feat/paper-fidelity-v0.3 are merged/deleted
+git fetch origin
+git checkout main
+git pull --ff-only
+
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 
 # Server
 rlm-mcp
 
-# Smoke test: handshake + list tools
-.venv/bin/python - <<'PY'
+# Smoke test: handshake + list tools (expect 14, including rlm_sub_query)
+.venv/bin/python - <<'PYCODE'
 import anyio
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -73,7 +91,7 @@ async def main():
             print(len(tools.tools), [t.name for t in tools.tools])
 
 anyio.run(main)
-PY
+PYCODE
 ```
 
 ## Tracing
