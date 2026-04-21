@@ -131,6 +131,20 @@ Either the MCP (as above) OR the bundled skill + subagent at
 [OCWC22/claude_code_RLM](https://github.com/Brainqub3/claude_code_RLM) — the
 skill integrates a Haiku subagent for chunk-level extraction.
 
+## Install all detected clients (fresh machine)
+
+After cloning this repo on a machine with local MCP clients installed:
+
+```bash
+python3 scripts/install_clients.py
+python3 scripts/verify_clients.py
+```
+
+- `install_clients.py` idempotently configures any detected client configs
+  (Claude Desktop, Claude Code, Codex CLI, Gemini CLI) to use this checkout's
+  `run_server.sh`.
+- `verify_clients.py` runs MCP stdio handshake checks and expects 14 tools.
+
 ## Example usage (natural language, any client)
 
 > *“Load `/Users/me/big-logs/app.log` into rlm and find every ERROR with a
