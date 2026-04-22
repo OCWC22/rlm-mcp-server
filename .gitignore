@@ -6,3 +6,7 @@ dist/
 build/
 config-backups-*/
 .cache/
+# CDNA4 ISA benchmark outputs
+bench/cdna4-isa/results/*
+!bench/cdna4-isa/results/demo/
+!bench/cdna4-isa/results/demo/.gitkeep
