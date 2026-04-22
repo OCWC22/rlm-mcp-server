@@ -305,3 +305,24 @@ These are realistic transcripts (with illustrative model outputs) meant to help 
   year={2026}
 }
 ```
+
+## Client harness — per-CLI RLM-favoring artifacts (v0.5.0+)
+
+Each of the 4 supported clients gets native extension artifacts optimized to nudge the host LLM toward RLM on long-context tasks:
+
+| Client | Artifacts deployed |
+|---|---|
+| **Claude Code** | rlm-analyst subagent, /rlm-load slash command, ~/.claude/CLAUDE.md merge |
+| **Codex CLI** | ~/.codex/AGENTS.md merge, ~/.codex/skills/rlm/SKILL.md |
+| **Gemini CLI** | ~/.gemini/extensions/rlm/ bundle (or ~/.gemini/GEMINI.md fallback) |
+| **Claude Desktop** | Manual checklist (no file-based primitives available) |
+
+All artifacts live in client-harness/ in this repo. Deploy:
+
+```
+python3 scripts/deploy_harness.py              # deploy to all detected clients
+python3 scripts/deploy_harness.py --dry-run    # preview, no writes
+python3 scripts/verify_harness.py              # confirm artifacts present
+```
+
+Idempotent — re-running reports NO-CHANGES. Marker-merged snippets use BEGIN/END rlm-harness vX.Y.Z sentinels with timestamped backups before any edit.

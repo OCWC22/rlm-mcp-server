@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0] - 2026-04-21
+
+### Added
+- client-harness/ with native extension artifacts for all 4 clients
+- scripts/deploy_harness.py — idempotent per-client deployer with marker-merge + backups; flags --dry-run, --json-report, --clients
+- scripts/verify_harness.py — post-deploy verification
+- README and AGENTS.md documentation for the harness system
+
+### Notes
+- gemini extensions install may time out; deployer falls back to copying the bundle + merging ~/.gemini/GEMINI.md
+- MCP prompts/list slash-menu surfacing in Codex/Gemini remains UNCONFIRMED; harness gives equivalent coverage via native agents/commands/skills
+
 ## [0.4.2] - 2026-04-21
 
 ### Fixed

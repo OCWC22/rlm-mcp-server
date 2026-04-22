@@ -156,3 +156,18 @@ PYCODE
 
 No previous sessions found.
 </claude-mem-context>
+
+## Client harness (v0.5.0+)
+
+client-harness/ contains per-client extension artifacts. Each subdirectory
+targets one client native extension system. Deployment via
+scripts/deploy_harness.py (idempotent, marker-merged, backup-before-write).
+Verification via scripts/verify_harness.py.
+
+When adding a new harness artifact:
+
+1. Drop the file under client-harness/<client>/
+2. For memory-merge snippets, wrap with BEGIN/END rlm-harness vX.Y.Z markers
+3. Extend deploy_harness.py to copy/merge it
+4. Extend verify_harness.py to assert presence
+5. Bump the marker version so re-merge triggers on next deploy
