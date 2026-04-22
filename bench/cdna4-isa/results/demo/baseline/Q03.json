@@ -1,0 +1,9 @@
+{
+  "answer": "UNKNOWN. The provided excerpt references the CDNA block diagram, but the figure contents are not transcribed in the text shown here, so the number of SIMDs per compute unit is not directly stated in this excerpt.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 26188.49,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180109,
+  "tokens_out_estimated": 53
+}

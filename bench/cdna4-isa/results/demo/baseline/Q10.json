@@ -1,0 +1,9 @@
+{
+  "answer": "The five SALU microcode formats are `SOP2`, `SOPK`, `SOP1`, `SOPC`, and `SOPP`. These are the scalar ALU/control instruction encodings used for SALU instructions.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 22752.6,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180109,
+  "tokens_out_estimated": 40
+}

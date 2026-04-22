@@ -1,0 +1,9 @@
+{
+  "answer": "UNKNOWN. The provided excerpt does not include the revision history entry for version 1.0, so it does not state what 1.0 introduces or which target is named.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 24153.89,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180112,
+  "tokens_out_estimated": 39
+}

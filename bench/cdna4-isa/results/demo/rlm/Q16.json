@@ -1,0 +1,12 @@
+{
+  "answer": "Per compute unit, LDS provides 160 kB of on-chip shared memory. In the ISA corpus it is described as 64 banks, each bank holding 640 dwords of 4 bytes and being 32 bits wide; dwords are laid out across banks serially, all banks can service loads/stores in parallel, one work-group can request up to the full 160 kB, and the LDS also includes 32 integer atomic units. Bank conflicts happen when multiple accesses hit the same bank at the same time. For indexed and atomic LDS operations, the hardware resolves those conflicts by serializing the accesses, which lowers effective LDS bandwidth and increases latency; the corpus notes LDS can be about an order of magnitude faster than global memory when there are no bank conflicts, and operations can range from about 2 cycles up to 64 cycles depending on how many conflicts occur.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 62407.09,
+  "method_notes": "RLM tool flow: rlm_init -> rlm_grep/rlm_peek -> optional rlm_exec(llm_query)",
+  "session_id": "cdna4-bench-Q16-20260422T095826Z",
+  "status": "ok",
+  "tokens_in_estimated": 263,
+  "tokens_out_estimated": 207,
+  "trace_file": "/Users/chen/.cache/rlm-mcp/traces/cdna4-bench-Q16-20260422T095826Z-20260422.jsonl",
+  "trace_line_count": 6
+}

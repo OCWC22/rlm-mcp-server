@@ -1,0 +1,9 @@
+{
+  "answer": "For scalar memory loads, `GLC=0` means reads can hit in L1 and persist across wavefronts, while `GLC=1` means reads miss L1 and L2, fetch from the data fabric, and do not persist in L1 across waves. For scalar memory stores, `GLC=0` means writes miss L1, write through to L2, and persist in L1 across wavefronts, while `GLC=1` means writes miss L1, write through to L2, and have no L1 persistence across wavefronts. For scalar atomics, `GLC=0` means the pre-operation value is not returned, and `GLC=1` means the pre-operation value is returned; atomics have no L1 persistence across wavefronts in either case.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 22619.76,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180114,
+  "tokens_out_estimated": 152
+}

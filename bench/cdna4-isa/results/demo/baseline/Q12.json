@@ -1,0 +1,9 @@
+{
+  "answer": "The `VOP3` encoding supports up to three inputs, plus input modifiers (`NEG`, `ABS`) and output modifiers. It cannot use a 32-bit literal constant; only the 32-bit VALU encodings can use a literal constant.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 17066.26,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180117,
+  "tokens_out_estimated": 51
+}

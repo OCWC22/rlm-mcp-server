@@ -1,0 +1,9 @@
+{
+  "answer": "The six `S_CBRANCH_<test>` conditions are `VCCZ`, `VCCNZ`, `EXECZ`, `EXECNZ`, `SCCZ`, and `SCCNZ`. These are the conditional branch tests listed in the Program Flow Control section for scalar branch instructions.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 18004.22,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180113,
+  "tokens_out_estimated": 53
+}

@@ -1,0 +1,12 @@
+{
+  "answer": "For scalar memory (SMEM) instructions, GLC is not one uniform \u201ccoherence\u201d switch; its meaning depends on the operation type. For loads, it selects the L1 cache policy: `GLC=0` means `hit_lru`, while `GLC=1` means `miss_evict`. For stores, it selects the store/cache-bypass policy: `GLC=0` means `write-combine`, while `GLC=1` means `write-thru`. For scalar atomics, `GLC=1` means the atomic returns the pre-operation value in `SDATA`; with `GLC=0`, that old value is not returned.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 83067.36,
+  "method_notes": "RLM tool flow: rlm_init -> rlm_grep/rlm_peek -> optional rlm_exec(llm_query)",
+  "session_id": "cdna4-bench-Q18-20260422T095929Z",
+  "status": "ok",
+  "tokens_in_estimated": 261,
+  "tokens_out_estimated": 120,
+  "trace_file": "/Users/chen/.cache/rlm-mcp/traces/cdna4-bench-Q18-20260422T095929Z-20260422.jsonl",
+  "trace_line_count": 9
+}

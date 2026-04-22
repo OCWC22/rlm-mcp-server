@@ -1,0 +1,9 @@
+{
+  "answer": "One wavefront contains 64 work-items. The terminology table defines a wavefront as a collection of 64 work-items that execute in parallel on a single CDNA processor.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 16431.98,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180111,
+  "tokens_out_estimated": 41
+}

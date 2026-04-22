@@ -42,6 +42,10 @@ State pickles live at `$RLM_STATE_DIR` (fallback `$RLM_DATA_DIR`, default `~/.ca
 
 See [CHANGELOG.md](./CHANGELOG.md) for release-by-release notes.
 
+## Benchmarks
+
+- CDNA4 ISA benchmark demo (baseline vs RLM, N=10): [`bench/cdna4-isa/RESULTS.md`](./bench/cdna4-isa/RESULTS.md)
+
 ### Client compatibility note
 
 Claude Desktop and Claude Code typically support MCP Sampling and use the
