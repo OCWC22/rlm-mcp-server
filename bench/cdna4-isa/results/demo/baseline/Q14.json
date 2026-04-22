@@ -1,0 +1,9 @@
+{
+  "answer": "The dense F8F6F4 MFMA opcodes are `V_MFMA_F32_16X16X128_F8F6F4`, `V_MFMA_F32_32X32X64_F8F6F4`, `V_MFMA_SCALE_F32_16X16X128_F8F6F4`, and `V_MFMA_SCALE_F32_32X32X64_F8F6F4`.  \nThe `16x16x128` forms use A=`16x128`, B=`128x16`, and C/D=`16x16`; they run in 32 cycles if either matrix A or B uses an 8-bit float format selected by the F8F6F4 controls (`FP8` or `BF8`), otherwise they run in 16 cycles when both matrices use only `FP6`, `BF6`, or `FP4`.  \nThe `32x32x64` forms use A=`32x64`, B=`64x32`, and C/D=`32x32`; they run in 64 cycles if either matrix uses `FP8` or `BF8`, otherwise they run in 32 cycles when both matrices use only `FP6`, `BF6`, or `FP4`.  \nThe SCALE variants have the same matrix shapes and the same cycle-count rule as the non-SCALE variants.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 45160.14,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180130,
+  "tokens_out_estimated": 190
+}

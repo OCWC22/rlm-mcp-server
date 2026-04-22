@@ -1,0 +1,9 @@
+{
+  "answer": "The program counter is a 48-bit byte address that points to the next shader instruction to execute. When a wavefront is created, it is initialized to the first instruction in the program. Branch targets are computed relative to the instruction after the branch, not the branch instruction itself: the target is `PC_of_next_instruction + offset`. `S_GET_PC` and `S_SWAP_PC` are also PC-relative to the next instruction.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 19777.27,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180114,
+  "tokens_out_estimated": 104
+}

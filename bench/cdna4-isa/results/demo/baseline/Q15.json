@@ -1,0 +1,9 @@
+{
+  "answer": "F64 MFMA, F8F6F4 MFMA, and SMFMAC all ignore EXEC and force all threads active.  \nFor F64 MFMA, CBSZ and ABID are ignored, and BLGP is repurposed as negate controls: BLGP[0] negates matrix A, BLGP[1] negates matrix B, and BLGP[2] negates matrix C.  \nFor F8F6F4 MFMA, CBSZ[2:0] selects matrix-A format and BLGP[2:0] selects matrix-B format instead of normal broadcast control; the format codes are FP8 E4M3, BF8 E5M2, FP6 E2M3, BF6 E3M2, and FP4 E2M1. ABID is only described for SCALE variants, where ABID[0]=1 is required to use scale sources and ABID[0]=0 forces scale factors to 1.0f.  \nFor SMFMAC, CBSZ and ABID are used only to select sparse-index data from `srcC` and do not control MFMA-style broadcasting; some 8-bit SMFMAC variants ignore CBSZ/ABID entirely, and BLGP meaning is not specified here.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 89183.9,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180122,
+  "tokens_out_estimated": 201
+}

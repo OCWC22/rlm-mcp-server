@@ -1,0 +1,12 @@
+{
+  "answer": "The dense `F8F6F4` MFMA family in the CDNA4 ISA has four opcodes:\n\n- `V_MFMA_F32_16x16x128_F8F6F4`: shape `16x16x128` (`A=16x128`, `B=128x16`, `C/D=16x16 F32`). Cycle count: `32` if either matrix A or B is `F8/FP8`; otherwise `16`.\n- `V_MFMA_F32_32x32x64_F8F6F4`: shape `32x32x64` (`A=32x64`, `B=64x32`, `C/D=32x32 F32`). Cycle count: `64` if either matrix A or B is `F8/FP8`; otherwise `32`.\n- `V_MFMA_SCALE_F32_16X16X128_F8F6F4`: shape `16x16x128`. Cycle count: `32` if either matrix A or B is `F8/FP8`; otherwise `16`.\n- `V_MFMA_SCALE_F32_32X32X64_F8F6F4`: shape `32x32x64`. Cycle count: `64` if either matrix A or B is `F8/FP8`; otherwise `32`.\n\nFor these `F8F6F4` dense opcodes, the ISA ties the higher cycle count specifically to `F8/FP8` participation; `BF8` is not listed as a format for this `F8F6F4` family.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 86929.66,
+  "method_notes": "RLM tool flow: rlm_init -> rlm_grep/rlm_peek -> optional rlm_exec(llm_query)",
+  "session_id": "cdna4-bench-Q14-20260422T095359Z",
+  "status": "ok",
+  "tokens_in_estimated": 277,
+  "tokens_out_estimated": 204,
+  "trace_file": "/Users/chen/.cache/rlm-mcp/traces/cdna4-bench-Q14-20260422T095359Z-20260422.jsonl",
+  "trace_line_count": 7
+}

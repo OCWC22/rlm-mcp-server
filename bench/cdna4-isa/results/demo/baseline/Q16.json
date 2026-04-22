@@ -1,0 +1,9 @@
+{
+  "answer": "Each compute unit has 160 kB of LDS. It is organized as 64 banks, each bank holding 640 Dwords of 4 bytes each, and each bank is 32 bits wide.\n\nDwords are placed serially across the banks, and all banks can be accessed simultaneously, so LDS can sustain up to 32 concurrent nominal 32-bit reads or writes; `read2`/`write2` operations can be 64 bits each. If more than one access targets the same bank at the same time, a bank conflict occurs, and for indexed and atomic operations the hardware serializes those accesses. Bank conflicts therefore reduce the effective bandwidth and throughput of LDS.",
+  "command_used": "codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -",
+  "latency_ms": 24151.15,
+  "method_notes": "truncated first 720KB of 920KB",
+  "status": "ok",
+  "tokens_in_estimated": 180116,
+  "tokens_out_estimated": 149
+}
