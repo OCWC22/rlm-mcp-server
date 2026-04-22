@@ -1,0 +1,12 @@
+description = "Load a large file into rlm MCP and analyze it with chunk-driven recursion."
+prompt = """
+Use the rlm MCP tools to analyze {{args}}.
+
+1. rlm_init(path={{args}}, session_id="gemini-analyze")
+2. rlm_status — report size + buffer count
+3. rlm_peek(0, 1000) for orientation
+4. If > 150000 chars: rlm_chunk_indices then rlm_exec loop calling llm_query per chunk
+5. rlm_get_buffers → final synthesis
+
+Do not read the file with built-in file tools — offload to RLM.
+"""
