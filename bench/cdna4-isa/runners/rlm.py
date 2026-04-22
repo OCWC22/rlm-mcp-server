@@ -112,9 +112,9 @@ def main() -> int:
             "session_id": session_id,
         }
 
-        stderr = run.get("stderr", "")
-        if stderr:
-            payload["stderr"] = stderr
+        stderr = str(run.get("stderr", ""))
+        if status != "ok" and stderr:
+            payload["error"] = stderr[:2000]
 
         common.write_result(METHOD, qid, payload, results_root=args.results_dir)
 
