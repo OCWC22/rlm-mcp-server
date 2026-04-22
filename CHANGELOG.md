@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.6.0] - 2026-04-22
+
+### Added
+- CDNA4 ISA benchmark demo comparison (baseline vs RLM, N=10) with generated report: [`bench/cdna4-isa/RESULTS.md`](./bench/cdna4-isa/RESULTS.md)
+
 ## [0.5.0] - 2026-04-21
 
 ### Added
@@ -68,7 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release (`45e6730`) of a simple persistent-REPL MCP server.
 - 11-tool baseline: session load/status/peek/grep/chunk/buffer/reset primitives for long-context workflows.
 
-[Unreleased]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.4.2...v0.5.0
+[0.4.2]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.4.0...v0.4.1
 [0.3.0]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.1.0...v0.2.0
