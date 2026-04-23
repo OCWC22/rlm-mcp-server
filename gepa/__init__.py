@@ -1,4 +1,4 @@
-"""GEPA scaffold for optimizing RLM tool-description prompts from traces."""
+"""Legacy GEPA scaffolding retained under ``gepa._diagnostics``."""
 
-__all__ = ["trace_to_dataset", "signatures", "metrics"]
+__all__ = ["_diagnostics"]
 __version__ = "0.1.0"
