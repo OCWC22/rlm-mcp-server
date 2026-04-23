@@ -1,0 +1,11 @@
+domain: gpu-kernels
+description: Skeleton benchmark domain for HIP/Triton kernel analysis.
+prompt_template: kernel_analysis
+question_file: questions.jsonl
+inputs:
+  corpus_path: inputs/kernels_corpus.txt
+  corpus_path_env: RLM_GPU_KERNELS_CORPUS
+  source_hint: /Users/chen/Projects/AMD-MI355X-KERNELS/kernels
+  notes:
+    - Build a single text corpus by concatenating kernel sources and relevant ISA snippets.
+    - Keep absolute source paths in chunk headers so citations remain actionable.

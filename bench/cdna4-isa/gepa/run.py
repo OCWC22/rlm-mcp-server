@@ -16,6 +16,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from bench.common.config import (
+    REFLECTION_DEFAULT,
+    REFLECTION_ENV,
+    TASK_DEFAULT,
+    TASK_ENV,
+    reflection_lm,
+    task_lm,
+)
+
 HERE = Path(__file__).resolve().parent
 ARTIFACT_PATH = HERE / "compiled" / "cdna4_runner.json"
 GEPA_LOG_DIR = HERE / "gepa_logs"
@@ -23,11 +32,6 @@ RESULTS_JSON = HERE / "results.json"
 RESULTS_MD = HERE / "results.md"
 VERSION_COMPARISON_JSON = HERE / "version_comparison.json"
 LAST_EVAL_JSON = HERE / "last_eval.json"
-
-TASK_ENV = "RLM_TASK_LM"
-REFLECTION_ENV = "RLM_REFLECTION_LM"
-TASK_DEFAULT = "openrouter/openai/gpt-5-mini"
-REFLECTION_DEFAULT = "openrouter/openai/gpt-5.4"
 
 
 def _import_pipeline():
@@ -76,10 +80,10 @@ def _read_lm_env(require_models):
 
 def _configure_dspy(task_model, reflection_model):
     dspy = _import_dspy()
-    task_lm = dspy.LM(task_model, temperature=0.0)
-    reflection_lm = dspy.LM(reflection_model, temperature=1.0, max_tokens=8000)
-    dspy.configure(lm=task_lm)
-    return dspy, task_lm, reflection_lm
+    configured_task_lm = task_lm(model=task_model)
+    configured_reflection_lm = reflection_lm(model=reflection_model)
+    dspy.configure(lm=configured_task_lm)
+    return dspy, configured_task_lm, configured_reflection_lm
 
 
 def _build_context():
