@@ -47,6 +47,16 @@ class _ExampleShim(dict):
         return self
 
 
+class _PredictionShim(dict):
+    """Dict-like fallback that mirrors dspy.Prediction key/attr access."""
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
 if dspy is not None:
     try:
 
@@ -236,7 +246,7 @@ def rich_metric(gold, pred, trace=None, **_):
         judge_rationale += " Candidate answer was empty."
 
     if dspy is None:
-        return {"score": score, "feedback": judge_rationale}
+        return _PredictionShim(score=score, feedback=judge_rationale)
 
     return dspy.Prediction(score=score, feedback=judge_rationale)
 
