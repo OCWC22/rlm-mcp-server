@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rlm-mcp-server"
-version = "0.6.0"
+version = "0.7.0"
 description = "Simple RLM-style persistent text REPL exposed over MCP. Load huge files, peek/grep/chunk them from any MCP client (Claude Desktop, Codex CLI, Gemini CLI, etc.)."
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,9 +21,10 @@ classifiers = [
 
 
 [project.optional-dependencies]
-gepa = ["dspy-ai>=3.1.3", "gepa>=0.1.1"]
+dspy = ["dspy-ai>=3.2,<3.3"]
+gepa = ["dspy-ai>=3.2,<3.3"]
 eval = ["datasets>=2.18"]
-all = ["dspy-ai>=3.1.3", "gepa>=0.1.1", "datasets>=2.18"]
+all = ["dspy-ai>=3.2,<3.3", "datasets>=2.18"]
 
 [project.urls]
 Homepage = "https://github.com/OCWC22/rlm-mcp-server"
@@ -34,4 +35,4 @@ rlm-mcp = "rlm_mcp:main"
 rlm-trace = "rlm_trace_cli:main"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["rlm_mcp.py", "rlm_trace_cli.py", "gepa", "eval"]
+only-include = ["rlm_mcp.py", "rlm_trace_cli.py", "gepa", "eval", "dspy_rlm"]

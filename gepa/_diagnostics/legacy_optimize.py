@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .metrics import eval_harness_metric, score
+from .legacy_metrics import eval_harness_metric, score
 from .signatures import RLMToolSelection, make_student_module
 from .trace_to_dataset import load_trainset
 

@@ -22,6 +22,13 @@ CODEX_COMMAND_PREFIX = [
 ]
 CODEX_TIMEOUT_SECONDS = 180
 
+# v0.7.0: per-complexity timeout — quadratic trajectories need more budget
+TIMEOUT_BY_COMPLEXITY = {"constant": 180, "linear": 240, "quadratic": 420}
+
+def timeout_for(question: dict) -> int:
+    """Return per-complexity timeout, falling back to CODEX_TIMEOUT_SECONDS."""
+    return TIMEOUT_BY_COMPLEXITY.get(question.get("complexity", "linear"), CODEX_TIMEOUT_SECONDS)
+
 REQUIRED_QUESTION_FIELDS = {
     "id",
     "section",

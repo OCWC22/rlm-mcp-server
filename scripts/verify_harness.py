@@ -58,6 +58,20 @@ def verify_codex() -> Check:
     c.items.append(_check_file("AGENTS.md has marker", home / ".codex/AGENTS.md", must_contain=MARKER))
     c.items.append(_check_file("skills/rlm dir", home / ".codex/skills/rlm"))
     c.items.append(_check_file("rlm SKILL.md", home / ".codex/skills/rlm/SKILL.md"))
+
+    # v0.7.0: frontmatter must use lowercase name:/description: keys (case-sensitive name: field expected by Codex)
+    skill_path = home / ".codex/skills/rlm/SKILL.md"
+    if skill_path.exists():
+        txt = skill_path.read_text(errors="replace")
+        first_300 = txt[:300]
+        lc_ok = ("name: " in first_300) and ("description: " in first_300)
+        uc_bad = ("Name: " in first_300) or ("Description: " in first_300)
+        c.items.append({
+            "label": "SKILL.md frontmatter lowercase",
+            "path": str(skill_path),
+            "exists": True,
+            "pass": lc_ok and not uc_bad,
+        })
     c.passed = all(i["pass"] for i in c.items)
     return c
 

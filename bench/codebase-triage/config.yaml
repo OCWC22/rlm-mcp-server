@@ -1,0 +1,11 @@
+domain: codebase-triage
+description: Skeleton benchmark domain for architecture triage over repository corpora.
+prompt_template: codebase_triage
+question_file: questions.jsonl
+inputs:
+  corpus_path: inputs/rlm_mcp_server_corpus.txt
+  corpus_path_env: RLM_CODEBASE_TRIAGE_CORPUS
+  source_hint: /Users/chen/Projects/claude_code_RLM/rlm-mcp-server
+  notes:
+    - Build the corpus from key Python modules, docs, and scripts in this repo.
+    - Keep file-path headers in the concatenated text for evidence-backed answers.

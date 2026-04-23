@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.0] - 2026-04-23
+
+### Fixed
+- Runner prompt path was corrected from an Algorithm-2-style strawman toward the intended recursive scaffold flow (Item A).
+- Codex harness `SKILL.md` case sensitivity issue was fixed so skill loading no longer silently fails (Item A).
+- Per-complexity timeout handling and LLM-judge hygiene were tightened for benchmark stability (Item A).
+- `@mcp.prompt(...)` templates now enforce richer scaffold guidance for kernel/paper/codebase workflows (Item A).
+
+### Added
+- CDNA4 GEPA MVP under `bench/cdna4-isa/gepa/` with `pipeline.py`, `run.py`, and docs (`--dry-run`, `--baseline`, `--optimize`, `--eval`) (Item 1).
+- `dspy_rlm/` composable DSPy wrapper module plus contract tests in `tests/test_gepa_contract.py` (Item 2).
+- Generalized benchmark scaffold:
+  - `bench/common/config.py` task/reflection LM helpers (`RLM_TASK_LM`, `RLM_REFLECTION_LM`)
+  - `bench/gpu-kernels/` skeleton domain
+  - `bench/codebase-triage/` skeleton domain
+  - `bench/README.md` domain authoring guide (Item 3).
+
+### Notes
+- No real GEPA `--optimize` run is included in this release; optimization remains user-initiated due LM-token cost.
+- Pattern credits: `dspy-agent-skills` examples and contract-guard conventions.
+
 ## [0.6.0] - 2026-04-22
 
 ### Added
@@ -73,7 +94,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release (`45e6730`) of a simple persistent-REPL MCP server.
 - 11-tool baseline: session load/status/peek/grep/chunk/buffer/reset primitives for long-context workflows.
 
-[Unreleased]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/OCWC22/rlm-mcp-server/compare/v0.4.1...v0.4.2

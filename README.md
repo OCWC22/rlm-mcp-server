@@ -42,9 +42,20 @@ State pickles live at `$RLM_STATE_DIR` (fallback `$RLM_DATA_DIR`, default `~/.ca
 
 See [CHANGELOG.md](./CHANGELOG.md) for release-by-release notes.
 
+### v0.7.0 highlights
+
+- **Real GEPA loop for CDNA4**: `bench/cdna4-isa/gepa/` now ships `pipeline.py` + `run.py` (`--dry-run`, `--baseline`, `--optimize`, `--eval`).
+- **Composable DSPy wrapper**: `dspy_rlm/` exposes `RLMModule` + reusable signatures for embedding our MCP server path inside larger DSPy programs.
+- **Generalized bench scaffold**: three benchmark domains are now documented under `bench/`.
+
 ## Benchmarks
 
-- CDNA4 ISA benchmark demo (baseline vs RLM, N=10): [`bench/cdna4-isa/RESULTS.md`](./bench/cdna4-isa/RESULTS.md)
+- Domain index + scaffold guide: [`bench/README.md`](./bench/README.md)
+- `cdna4-isa/` — full benchmark + GEPA MVP (`bench/cdna4-isa/gepa/`)
+- `gpu-kernels/` — skeleton domain for HIP/Triton/ISA kernel corpora
+- `codebase-triage/` — skeleton domain for repository architecture triage corpora
+
+CDNA4 demo report (baseline vs RLM, N=10): [`bench/cdna4-isa/RESULTS.md`](./bench/cdna4-isa/RESULTS.md)
 
 ### Client compatibility note
 
