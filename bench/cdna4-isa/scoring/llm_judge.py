@@ -236,6 +236,60 @@ def normalize_score(value: Any) -> float:
     return float(closest)
 
 
+def judge_answer(
+    *,
+    question: dict[str, Any],
+    method: str,
+    answer: str,
+    status: str = "ok",
+    method_notes: str = "",
+    cwd: Path | None = None,
+) -> dict[str, Any]:
+    """Judge one candidate answer and return normalized score + rationale."""
+
+    answer_payload = {
+        "answer": answer,
+        "status": status,
+        "method_notes": method_notes,
+    }
+    prompt = build_prompt(question=question, method=method, answer_payload=answer_payload)
+    run = run_codex_exec(prompt, cwd=cwd or BENCH_ROOT.parents[1])
+
+    judge_status = str(run.get("status", "error"))
+    judge_raw = str(run.get("answer", "")).strip()
+    judge_stderr = str(run.get("stderr", "")).strip()
+
+    score = 0.0
+    rationale = "Judge call failed; assigned 0.0 by fallback."
+    parse_error = ""
+
+    if judge_status == "ok":
+        try:
+            payload = extract_json_block(judge_raw)
+            score = normalize_score(payload.get("score"))
+            rationale = str(payload.get("rationale", "")).strip() or "No rationale provided by judge."
+        except Exception as exc:  # noqa: BLE001
+            parse_error = f"{type(exc).__name__}: {exc}"
+            rationale = "Judge output parsing failed; assigned 0.0 by fallback."
+    elif judge_status == "timeout":
+        rationale = "Judge call timed out; assigned 0.0 by fallback."
+
+    result: dict[str, Any] = {
+        "score": score,
+        "rationale": rationale,
+        "judge_status": judge_status,
+        "judge_latency_ms": float(run.get("latency_ms", 0.0)),
+        "judge_raw": judge_raw,
+    }
+
+    if judge_stderr:
+        result["judge_stderr"] = judge_stderr[:4000]
+    if parse_error:
+        result["parse_error"] = parse_error
+
+    return result
+
+
 def key_for(method: str, qid: str) -> str:
     return f"{method}:{qid}"
 
