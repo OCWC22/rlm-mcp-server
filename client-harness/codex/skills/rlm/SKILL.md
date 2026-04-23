@@ -1,6 +1,6 @@
 ---
-Name: rlm
-Description: Recursive Language Model loop for long-context tasks. Use this skill whenever you need to analyze files, logs, or corpora that exceed ~300 KB, are too large for a single context window, or require iterative chunk-by-chunk reasoning. Drives the `rlm` MCP server tools to load, chunk, recursively query, and synthesize.
+name: rlm
+description: Recursive Language Model loop for long-context tasks. Use this skill whenever you need to analyze files, logs, or corpora that exceed ~300 KB, are too large for a single context window, or require iterative chunk-by-chunk reasoning. Drives the `rlm` MCP server tools to load, chunk, recursively query, and synthesize.
 ---
 
 This skill activates the RLM (Recursive Language Model) workflow from `rlm-mcp-server`.
