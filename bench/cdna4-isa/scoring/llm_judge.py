@@ -147,8 +147,8 @@ def build_prompt(*, question: dict[str, Any], method: str, answer_payload: dict[
         f"Reference answer: {question['reference_answer']}\n"
         f"Keywords for scoring: {keywords_text}\n\n"
         f"Candidate method: {method}\n"
-        f"Candidate status: {status}\n"
-        f"Candidate method notes: {method_notes}\n"
+        (f"Candidate status: {status}\n"
+         f"Candidate method notes: {method_notes}\n") if status != "ok" else ""
         f"Candidate answer: {candidate_answer if candidate_answer else '[EMPTY]'}\n"
     )
 

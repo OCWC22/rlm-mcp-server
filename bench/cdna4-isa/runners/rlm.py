@@ -14,20 +14,83 @@ METHOD_NOTES = "RLM tool flow: rlm_init -> rlm_grep/rlm_peek -> optional rlm_exe
 
 
 def build_prompt(*, isa_path: Path, session_id: str, question: dict[str, str]) -> str:
-    return (
-        "Use the rlm MCP tools to answer this question from the CDNA4 ISA corpus.\n"
-        "Do not answer from memory; ground your answer in tool calls.\n"
-        f"Session ID: {session_id}\n"
-        f"ISA path (absolute): {isa_path}\n\n"
-        "Required sequence:\n"
+    """Build an Appendix-C.1-faithful RLM runner prompt.
+
+    The recursive scaffold (for-loop + llm_query + add_buffer + synthesis) is
+    MANDATORY on linear and quadratic questions — never optional. Constant
+    questions may short-circuit after orientation.
+    """
+    complexity = question.get("complexity", "linear")
+
+    orientation = (
         f"1) rlm_init(path=\"{isa_path}\", session_id=\"{session_id}\")\n"
-        f"2) rlm_grep(pattern=<good keyword regex>, session_id=\"{session_id}\")\n"
-        f"3) rlm_peek(...) around the strongest hits with session_id=\"{session_id}\"\n"
-        "4) If still uncertain, call rlm_exec with Python code that loops through candidate spans and uses llm_query(...) for synthesis.\n\n"
+        f"2) rlm_peek(0, 2000, session_id=\"{session_id}\")  # survey structure\n"
+        f"3) rlm_grep(pattern=<broad regex covering every candidate keyword>, "
+        f"max_matches=40, session_id=\"{session_id}\")\n"
+    )
+
+    recursive_block = (
+        "4) You MUST now run rlm_exec with a Python loop that calls llm_query(...) on EACH\n"
+        "   relevant chunk and buffers the results. Do NOT answer from a single peek.\n"
+        "   Shape (adapt to the specific question):\n"
+        "\n"
+        "```python\n"
+        "hits = grep(r\"<refined regex with ALL candidate terms>\", max_matches=40)\n"
+        "findings = []\n"
+        "for i, h in enumerate(hits):\n"
+        "    s, e = h[\"span\"]\n"
+        "    chunk = content[max(0, s-500):min(len(content), e+2000)]\n"
+        "    ans = llm_query(\n"
+        "        f\"Question: {question}\\n\\n\"\n"
+        "        f\"From this excerpt, extract only the parts that answer it. \"\n"
+        "        f\"Excerpt (hit {i+1}/{len(hits)}):\\n{chunk}\",\n"
+        "        max_tokens=400,\n"
+        "    )\n"
+        "    add_buffer(ans)\n"
+        "    findings.append(ans)\n"
+        "print(f\"collected {len(findings)} chunk answers\")\n"
+        "```\n"
+        "\n"
+        f"5) Then one final rlm_exec that synthesizes from buffers:\n"
+        "\n"
+        "```python\n"
+        f"bufs = rlm_get_buffers(\"{session_id}\")\n"
+        "final = llm_query(\n"
+        "    f\"Synthesize a complete answer to: {question}\\n\\n\"\n"
+        "    f\"Per-chunk findings (merge, dedupe, keep every distinct fact):\\n\" +\n"
+        "    \"\\n---\\n\".join(bufs),\n"
+        "    max_tokens=800,\n"
+        ")\n"
+        "print(final)\n"
+        "```\n"
+    )
+
+    quadratic_note = (
+        "IMPORTANT: this question has QUADRATIC complexity — it requires enumerating "
+        "EVERY item of at least one set, so missing variants or instruction types is a "
+        "hard failure. Err on the side of more chunks, broader regex, and longer per-chunk "
+        "queries. If the initial grep returns <10 hits for a comparison task, widen the regex.\n"
+    ) if complexity == "quadratic" else ""
+
+    constant_shortcut = (
+        "NOTE: this question has CONSTANT complexity (single-fact lookup). "
+        "After step 3, if rlm_peek on a strong hit obviously contains the answer, you MAY "
+        "skip the rlm_exec loop and answer directly. Otherwise fall through to the loop.\n"
+    ) if complexity == "constant" else ""
+
+    return (
+        "Use the rlm MCP server to answer this question from the CDNA4 ISA corpus.\n"
+        "Do NOT answer from memory — every fact in your answer must come from rlm tool calls.\n"
+        f"Session ID: {session_id}\n"
+        f"ISA path (absolute): {isa_path}\n"
         f"Question ID: {question['id']}\n"
         f"Section: {question['section']}\n"
+        f"Complexity: {complexity}\n"
         f"Question: {question['question']}\n\n"
-        "Output only the final answer text. If evidence is insufficient, respond UNKNOWN.\n"
+        + constant_shortcut + quadratic_note +
+        "Required sequence:\n" + orientation + recursive_block +
+        "\nOutput format: after step 5, emit ONLY the final synthesized answer text. "
+        "If evidence is genuinely insufficient after running the loop, respond UNKNOWN.\n"
     )
 
 
