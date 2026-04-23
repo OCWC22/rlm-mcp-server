@@ -557,6 +557,43 @@ async def _sub_query_impl(
     return _queue_callback_request(sid, prompt, max_tokens)
 
 
+# --- v0.7.0: mandatory Appendix-C.1 scaffolding appended to every prompt template ---
+MANDATORY_SCAFFOLD = """
+# --- MANDATORY recursive scaffold (paper arXiv:2512.24601 Appendix C.1) ---
+# You MUST follow these steps. Do NOT answer from a single peek or single grep hit.
+#
+# After orientation, call rlm_exec with code shaped like:
+#
+#   hits = grep(r"<broad regex covering every candidate term>", max_matches=40)
+#   for i, h in enumerate(hits):
+#       s, e = h["span"]
+#       chunk = content[max(0, s-500):min(len(content), e+2000)]
+#       ans = llm_query(
+#           f"Question: {question}\n\n"
+#           f"From this excerpt, extract ALL facts relevant to the question. "
+#           f"Excerpt (hit {i+1}/{len(hits)}):\n{chunk}",
+#           max_tokens=400,
+#       )
+#       add_buffer(ans)
+#   print(f"collected {len(hits)} chunk answers")
+#
+# Then one final rlm_exec to synthesize from buffers:
+#
+#   bufs = rlm_get_buffers(session_id)
+#   final = llm_query(
+#       f"Synthesize a complete answer to: {question}\n\n"
+#       f"Per-chunk findings (merge, dedupe, keep every distinct fact):\n" +
+#       "\n---\n".join(bufs),
+#       max_tokens=800,
+#   )
+#   print(final)
+#
+# Missing variants/cases on enumeration tasks is a hard failure — err toward
+# more chunks and broader regex. If initial grep returns <10 hits for a
+# comparison task, widen the regex and re-run before the loop.
+# --- end scaffold ---
+"""
+
 @mcp.prompt(
     description=(
         "Prime a GPU-kernel analysis workflow over rlm tools with grep anchors, "
@@ -588,6 +625,7 @@ def kernel_analysis(kernel_path: str, question: str) -> list[dict[str, str]]:
                 "intermediate conclusions with rlm_add_buffer. Use recursive sub-queries "
                 "for contentious hotspots (e.g., occupancy bottlenecks or race risks), "
                 "and finish with a prioritized summary grounded in concrete spans."
+                + MANDATORY_SCAFFOLD
             ),
         },
     ]
@@ -622,6 +660,7 @@ def paper_deep_dive(paper_path: str, topic: str) -> list[dict[str, str]]:
                 "extract claims, assumptions, metrics, and failure modes section-by-"
                 "section. End with a synthesized answer that distinguishes confirmed "
                 "claims, inferred implications, and open questions."
+                + MANDATORY_SCAFFOLD
             ),
         },
     ]
@@ -656,6 +695,7 @@ def codebase_triage(repo_path: str, question: str) -> list[dict[str, str]]:
                 "dependencies, and unresolved hypotheses across turns. Finish with a "
                 "concise findings report plus concrete follow-up probes if certainty is "
                 "below high confidence."
+                + MANDATORY_SCAFFOLD
             ),
         },
     ]
