@@ -148,6 +148,17 @@ PYCODE
      `rlm_mcp.py` `@mcp.tool(description=...)` arguments.
 - This loop is **not automatic**; optimization runs are user-initiated and may incur LM cost.
 
+## Adding a new benchmark domain
+
+See [`bench/README.md`](./bench/README.md) for the canonical scaffold and required files.
+
+Minimum domain shape:
+
+- `bench/<domain>/config.yaml`
+- `bench/<domain>/questions.jsonl`
+- `bench/<domain>/inputs/README.md`
+
+Reuse `bench/common/config.py` for LM wiring (`RLM_TASK_LM`, `RLM_REFLECTION_LM`) and keep corpora user-provided with path-preserving chunk headers for citation quality.
 
 <claude-mem-context>
 # Memory Context
