@@ -26,6 +26,30 @@
   - `rlm_reset` — delete one session state file
   - `rlm_list_sessions` — enumerate stored sessions
 
+## RLM naming and routing
+
+This repository owns the MCP-backed READ path for RLM. It is for stateful
+long-context analysis of existing corpora: load a file or corpus, inspect it,
+chunk it, run recursive subqueries, and synthesize findings.
+
+Do not confuse this with the Trampoline PredictRLM BUILD skill at
+`~/.claude/skills/rlm/SKILL.md` or
+`/Users/chen/Projects/.agents/skills/rlm/SKILL.md`. That skill writes reusable
+Python/DSPy RLM packages. It does not replace this MCP server.
+
+Do not confuse this with project-local DEBUG-LOOP doctrine in repos that define
+their own RLM protocol under `.claude/rules/` or `AGENTS.md`. Those rules are
+only authoritative inside their repo and usually drive autonomous correctness
+debugging loops, not general corpus analysis.
+
+Default routing:
+- READ an existing large file, log, paper, transcript, codebase, or corpus:
+  use this MCP server (`mcp__rlm__*` / `rlm_*` tools).
+- BUILD a reusable callable RLM package with explicit inputs, outputs, tests,
+  skills, and optional GEPA: use Trampoline PredictRLM.
+- DEBUG-LOOP inside a repo that defines a local RLM protocol: follow that repo's
+  local instructions.
+
 ## Paper mapping (arXiv:2512.24601)
 
 - Invariant #1 symbolic handle → `rlm_init` + per-session persisted state

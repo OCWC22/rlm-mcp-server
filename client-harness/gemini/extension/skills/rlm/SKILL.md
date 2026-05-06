@@ -5,6 +5,18 @@ description: RLM loop for long-context tasks. Activate when a user asks about a 
 
 Drive the `rlm` MCP server for long-context workflows.
 
+This is the long-context READ path, not the Trampoline PredictRLM BUILD skill.
+Use it to analyze existing files/corpora. Do not use it to scaffold a reusable
+`predict-rlm` package; for that, use the Trampoline PredictRLM skill.
+
+Routing rule:
+- READ a large existing corpus now -> use this MCP-backed skill.
+- BUILD a callable Python/DSPy RLM package -> use Trampoline PredictRLM.
+- CODE an application that directly imports `dspy.RLM` -> use DSPy RLM module
+  guidance.
+- DEBUG-LOOP inside a repo with local RLM doctrine -> follow that repo's
+  `AGENTS.md` / `.claude/rules/`.
+
 ## Canonical sequence
 
 1. `rlm_init(path=<file>, session_id=<slug>)`

@@ -5,6 +5,18 @@ description: Recursive Language Model loop for long-context tasks. Use this skil
 
 This skill activates the RLM (Recursive Language Model) workflow from `rlm-mcp-server`.
 
+This is the long-context READ path, not the Trampoline PredictRLM BUILD skill.
+Use it to analyze existing files/corpora. Do not use it to scaffold a reusable
+`predict-rlm` package; for that, use the Trampoline PredictRLM skill.
+
+Routing rule:
+- READ a large existing corpus now -> use this MCP-backed skill.
+- BUILD a callable Python/DSPy RLM package -> use Trampoline PredictRLM.
+- CODE an application that directly imports `dspy.RLM` -> use DSPy RLM module
+  guidance.
+- DEBUG-LOOP inside a repo with local RLM doctrine -> follow that repo's
+  `AGENTS.md` / `.claude/rules/`.
+
 ## When to invoke
 
 - Files or text ≥ ~300 KB
